@@ -16,4 +16,5 @@
 *.MTS
 *.wmv
 # Miscellaneous
+*)
 *.txt

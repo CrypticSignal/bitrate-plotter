@@ -20,8 +20,13 @@ In addition to this, the data used to plot the graph is saved in a file named `R
 9.0 --> 260 kbps
 10.008 --> 266 kbps
 ```
+
+# Requirements 
+- Python 3.6+
+- FFprobe executable in your PATH.
+
 # Usage
-Using this program is very simple. As an example, to analyse a file named video.mp4 in the current directory, enter `python main.py -f video.mp4`
+Using this program is very simple. As an example, to analyse the video bitrate of a file named video.mp4 in the current directory, enter `python main.py -f video -s v:0.mp4`. To analyse the bitrate of the first audio stream, the `-s` argument is not required and you can simply enter `python main.py -f video.mp4`.
 
 The only argument that is required is the path of the file that you wish to analyse. All other arguments are optional. You can find the output of `python main.py -h` below:
 ```

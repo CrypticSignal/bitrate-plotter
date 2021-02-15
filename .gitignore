@@ -16,5 +16,6 @@
 *.MTS
 *.wmv
 # Miscellaneous
+__pycache__
 *)
 *.txt

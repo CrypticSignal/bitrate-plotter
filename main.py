@@ -29,7 +29,7 @@ parser.add_argument(
     '-s', '--stream-specifier', 
     type=str, 
     help='Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse.\n'
-         'By default, the graph is based on the first stream.\n'
+         'The defaults for audio and video files are a:0 and V:0, respectively.\n'
          'Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1'
 )
 parser.add_argument(

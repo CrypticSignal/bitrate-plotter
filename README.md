@@ -26,9 +26,9 @@ In addition to this, the data used to plot the graph is saved in a file named `R
 - FFprobe executable in your PATH.
 
 # Usage
-Using this program is very simple. As an example, to analyse the video bitrate of a file named video.mp4 in the current directory, enter `python main.py -f video.mp4 -s v:0`. To analyse the bitrate of the first audio stream, the `-s` argument is not required and you can simply enter `python main.py -f video.mp4`.
+Using this program is very simple. As an example, to analyse the video bitrate of a file named video.mp4 in the current directory, enter `python main.py -f video.mp4`. To analyse a specific stream, you can use the `-s` argument, e.g. `python main.py -f video.mp4 -s a:0`.
 
-The only argument that is required is the path of the file that you wish to analyse. All other arguments are optional. You can find the output of `python main.py -h` below:
+You can find the output of `python main.py -h` below:
 ```
 usage: main.py [-h] -f FILE_PATH [-o OUTPUT_FOLDER] [-s STREAM_SPECIFIER] [-t GRAPH_TITLE]
 
@@ -46,7 +46,7 @@ optional arguments:
                         Example: -o "my folder"
   -s STREAM_SPECIFIER, --stream-specifier STREAM_SPECIFIER
                         Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse.
-                        By default, the graph is based on the first audio stream.
+                        The defaults for audio and video files are a:0 and V:0, respectively.
                         Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1
   -t GRAPH_TITLE, --graph-title GRAPH_TITLE
                         Specify a title for the output graph.

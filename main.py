@@ -4,6 +4,8 @@ import os
 import subprocess
 import matplotlib.pyplot as plt
 
+from utils import show_progress_bar, update_txt_file
+
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 
 parser.add_argument(
@@ -26,9 +28,8 @@ parser.add_argument(
 parser.add_argument(
     '-s', '--stream-specifier', 
     type=str, 
-    default='a:0',
     help='Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse.\n'
-         'By default, the graph is based on the first audio stream.\n'
+         'By default, the graph is based on the first stream.\n'
          'Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1'
 )
 parser.add_argument(
@@ -48,60 +49,96 @@ if args.output_folder:
     
 os.makedirs(output_folder, exist_ok=True)
 
-
-def update_txt_file(text, mode='a'):
-    with open(f'{output_folder}/Raw Data.txt', mode) as f:
-        f.write(text)
-
-
 update_txt_file(
     'This file shows the data used to create the graph. The data is in the format time --> bitrate\n'
-    'At the bottom of this file, you can find the min and max bitrate from this data.\n\n', 
+    'At the bottom of this file, you can find the min and max bitrate from this data.\n\n',
+    output_folder,
     mode='w'
 )
 
-process = subprocess.Popen(
-    'ffprobe -loglevel warning'
-    f' -select_streams {args.stream_specifier} -show_frames {args.file_path}', 
-    stdout=subprocess.PIPE
-)
+# This command will information about file's first stream.
+cmd = [
+    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()), 
+    '-show_streams', '-select_streams', '0', args.file_path
+]
 
-output = process.stdout.read().decode('utf-8').split('\n')
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+first_stream = process.stdout.read().decode('utf-8').replace('\r', '').split('\n')
 
-# Get the total number of bits after 1 second. 
-# After every second, this value is incremented by 1 so we can get the bitrate for the 2nd second, 3rd second, etc.
-time_to_check = 1
+# Default stream specifier.
+stream_specifier = 'a:0'
+
+if not args.stream_specifier:
+    if 'codec_type=video' in first_stream:
+        print('Video file detected. The video stream will be analysed.')
+        stream_specifier = 'V:0'
+    elif 'codec_type=subtitle' in first_stream:
+        print(
+            'It seems like you have specified a video file. The video stream will be analysed.\n'
+            'If this is not what you want, re-run this program using the -s argument '
+            'to manually specify the stream to analyse.'
+        )
+        stream_specifier = 'V:0'
+    else:
+        print('It seems like you have specified an audio file. The first audio stream will be analysed.')
+
+duration_cmd = [
+    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
+    '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', args.file_path
+]
+
+process = subprocess.Popen(duration_cmd, stdout=subprocess.PIPE)
+duration = float(process.stdout.read().decode('utf-8'))
+
+# This command will get the necessary data from the file.
+cmd = [
+    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
+    '-select_streams', stream_specifier, '-show_frames', args.file_path
+]
+
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+print(f'Running {" ".join(cmd)}...')
+process_output = process.stdout.read().decode('utf-8').split('\n')
+print('Done!')
 
 time_data = []
 size_data = []
 size_so_far = 0
 get_size_so_far = False
 
-for line in output:
+# Get the total number of bits after 1 second. 
+# After every second, this value is incremented by 1 so we can get the bitrate for the 2nd second, 3rd second, etc.
+time_to_check = 1
 
-    if 'pkt_pts_time' in line:
-        time = float(line[13:])
+for data in process_output:
+
+    if 'pkt_pts_time' in data:
+        time = float(data[13:])
 
         if time >= time_to_check:
-            update_txt_file(f'{time} --> ')
+            update_txt_file(f'{time} --> ', output_folder)
             time_data.append(time)
             time_to_check += 1 
             get_size_so_far = True
         else:
             get_size_so_far = False
 
-    elif 'pkt_size' in line:
+    elif 'pkt_size' in data:
         if get_size_so_far:
-            update_txt_file(f'{round(size_so_far)} kbps\n')
+            update_txt_file(f'{round(size_so_far)} kbps\n', output_folder)
             size_data.append(size_so_far)
+            show_progress_bar(time, duration, extra_info=f'bitrate={round(size_so_far)} kbps')
             size_so_far = 0
         else:
-            size_so_far += (int(line[9:]) * 8) / 1000
+            size_so_far += (int(data[9:]) * 8) / 1000
             # Multiplied by 8 to convert bytes to bits, then divided by 1000 to convert to kbps
+
+width, height = os.get_terminal_size()
+print('\r' + ' ' * (width - 1) + '\r', end='')
 
 min = round(min(size_data), 1)
 max = round(max(size_data), 1)
-update_txt_file(f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
+update_txt_file(f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps', output_folder)
 
 graph_title = filename if not args.graph_title else args.graph_title
 

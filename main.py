@@ -32,12 +32,6 @@ parser.add_argument(
          'The defaults for audio and video files are a:0 and V:0, respectively.\n'
          'Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1'
 )
-parser.add_argument(
-    '-t', '--graph-title', 
-    type=str,
-    help='Specify a title for the output graph.\n'
-         'By default, the title of the graph will simply be the name of the file that was analysed.'
-)
 
 args = parser.parse_args()
 filename = Path(args.file_path).name
@@ -99,9 +93,8 @@ min = round(min(size_data), 1)
 max = round(max(size_data), 1)
 write_to_txt_file(filename_without_ext, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
 
-graph_title = filename if not args.graph_title else args.graph_title
 print('Creating the graph...')
-plt.suptitle(graph_title)
+plt.suptitle(filename)
 plt.xlabel('Time (s)')
 plt.ylabel('Bitrate (kbps)')
 if args.graph_type == 'filled':

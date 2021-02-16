@@ -67,9 +67,6 @@ cmd = [
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 first_stream = process.stdout.read().decode('utf-8').replace('\r', '').split('\n')
 
-# Default stream specifier.
-stream_specifier = 'a:0'
-
 if not args.stream_specifier:
     if 'codec_type=video' in first_stream:
         print('Video file detected. The video stream will be analysed.')
@@ -82,8 +79,10 @@ if not args.stream_specifier:
         )
         stream_specifier = 'V:0'
     else:
+        stream_specifier = 'a:0'
         print('It seems like you have specified an audio file. The first audio stream will be analysed.')
 else:
+    stream_specifier = args.stream_specifier
     print(f'The bitrate of stream {args.stream_specifier} will be analysed.')
 
 duration_cmd = [
@@ -113,7 +112,7 @@ process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 start = time()
 
 for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-    
+
     if 'pkt_pts_time' in line:
         timestamp = float(line[13:])
 

@@ -4,16 +4,19 @@ from utils import write_to_txt_file
 
 
 def parse_ffprobe_output(process, filename_without_ext, file_duration):
-    time_last_eta_update = time()
     time_data = []
     size_data = []
     sum_pkt_size = 0
-    one_second_passed = False
+    timestamp_increased_by_one = False
     # Get the total number of bits after 1 second. 
     # After every second, this value is incremented by 1 so we can get the bitrate for the 2nd second, 3rd second, etc.
     time_to_check = 1
     
+    write_to_txt_file(filename_without_ext, '', mode='w')
+    time_last_eta_update = time()
+
     for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
+        
         if 'pkt_pts_time' in line:
             timestamp = float(line[13:])
 
@@ -35,12 +38,12 @@ def parse_ffprobe_output(process, filename_without_ext, file_duration):
                 print(f'Progress: {percentage_complete}% {eta_string}', end='\r')
 
                 time_to_check += 1 
-                one_second_passed = True
+                timestamp_increased_by_one = True
             else:
-                one_second_passed = False
+                timestamp_increased_by_one = False
                 
         elif 'pkt_size' in line:
-            if one_second_passed:
+            if timestamp_increased_by_one:
                 write_to_txt_file(filename_without_ext, f'{round(sum_pkt_size)} kbps\n')
                 size_data.append(sum_pkt_size)
                 sum_pkt_size = 0

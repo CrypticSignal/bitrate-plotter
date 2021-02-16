@@ -2,9 +2,11 @@ from argparse import ArgumentParser, RawTextHelpFormatter
 from pathlib import Path
 import os
 import subprocess
+import io
+from time import time
 import matplotlib.pyplot as plt
 
-from utils import show_progress_bar, update_txt_file
+from utils import line, show_progress_bar, update_txt_file
 
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 
@@ -81,6 +83,8 @@ if not args.stream_specifier:
         stream_specifier = 'V:0'
     else:
         print('It seems like you have specified an audio file. The first audio stream will be analysed.')
+else:
+    print(f'The bitrate of stream {args.stream_specifier} will be analysed.')
 
 duration_cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
@@ -90,6 +94,14 @@ duration_cmd = [
 process = subprocess.Popen(duration_cmd, stdout=subprocess.PIPE)
 duration = float(process.stdout.read().decode('utf-8'))
 
+time_data = []
+size_data = []
+size_so_far = 0
+get_size_so_far = False
+# Get the total number of bits after 1 second. 
+# After every second, this value is incremented by 1 so we can get the bitrate for the 2nd second, 3rd second, etc.
+time_to_check = 1
+
 # This command will get the necessary data from the file.
 cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
@@ -97,40 +109,35 @@ cmd = [
 ]
 
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-print(f'Running {" ".join(cmd)}...')
-process_output = process.stdout.read().decode('utf-8').split('\n')
-print('Done!')
 
-time_data = []
-size_data = []
-size_so_far = 0
-get_size_so_far = False
+start = time()
 
-# Get the total number of bits after 1 second. 
-# After every second, this value is incremented by 1 so we can get the bitrate for the 2nd second, 3rd second, etc.
-time_to_check = 1
+for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
+    line = line.strip()
 
-for data in process_output:
+    if 'pkt_pts_time' in line:
+        timestamp = float(line[13:])
 
-    if 'pkt_pts_time' in data:
-        time = float(data[13:])
-
-        if time >= time_to_check:
-            update_txt_file(f'{time} --> ', output_folder)
-            time_data.append(time)
+        if timestamp >= time_to_check:
+            update_txt_file(f'{timestamp} --> ', output_folder)
+            time_data.append(timestamp)
+            eta = (time() - start) * (duration - timestamp)
+            minutes = round(eta / 60)
+            seconds = f'{round(eta % 60):02d}'
+            show_progress_bar(timestamp, duration, extra_info=f'(ETA: {minutes}:{seconds} [M:S])')
+            start = time()
             time_to_check += 1 
             get_size_so_far = True
         else:
             get_size_so_far = False
 
-    elif 'pkt_size' in data:
+    elif 'pkt_size' in line:
         if get_size_so_far:
             update_txt_file(f'{round(size_so_far)} kbps\n', output_folder)
             size_data.append(size_so_far)
-            show_progress_bar(time, duration, extra_info=f'bitrate={round(size_so_far)} kbps')
             size_so_far = 0
         else:
-            size_so_far += (int(data[9:]) * 8) / 1000
+            size_so_far += (int(line[9:]) * 8) / 1000
             # Multiplied by 8 to convert bytes to bits, then divided by 1000 to convert to kbps
 
 width, height = os.get_terminal_size()

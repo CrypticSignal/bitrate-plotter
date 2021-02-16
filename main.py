@@ -6,10 +6,10 @@ import io
 from time import time
 import matplotlib.pyplot as plt
 
-from utils import update_txt_file
+from ffprobe_output_parser import parse_ffprobe_output
+from utils import write_to_txt_file
 
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
-
 parser.add_argument(
     '-f', '--file-path', 
     type=str, 
@@ -19,13 +19,11 @@ parser.add_argument(
          'Example: -f "C:/Users/H/Desktop/my file.mp4"'
 )
 parser.add_argument(
-    '-o', '--output-folder', 
-    type=str, 
-    help='Change the name of the folder where the data will be saved.\n'
-         'If the desired folder name contains a space, it must be surrounded in double quotes.\n'
-         'Default folder name: (<file being analysed>).\n'
-         'i.e. if the file being analysed is video.mp4, the output folder will be named (video.mp4)\n'
-         'Example: -o "my folder"'
+    '-g', '--graph-type',
+    required=True,
+    choices=['filled', 'unfilled'],
+    help='Specify the type of graph that should be created.\n'
+         'To see the difference between a filled and unfilled graph, check out the example graph files.'
 )
 parser.add_argument(
     '-s', '--stream-specifier', 
@@ -43,20 +41,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 filename = Path(args.file_path).name
-output_folder = f'({filename})'
 filename_without_ext = Path(args.file_path).stem
-
-if args.output_folder:
-    output_folder = args.output_folder
-    
-os.makedirs(output_folder, exist_ok=True)
-
-update_txt_file(
-    'This file shows the data used to create the graph. The data is in the format time --> bitrate\n'
-    'At the bottom of this file, you can find the min and max bitrate from this data.\n\n',
-    output_folder,
-    mode='w'
-)
 
 # This command will information about file's first stream.
 cmd = [
@@ -91,79 +76,36 @@ duration_cmd = [
 ]
 
 process = subprocess.Popen(duration_cmd, stdout=subprocess.PIPE)
-duration = float(process.stdout.read().decode('utf-8'))
+file_duration = float(process.stdout.read().decode('utf-8'))
 
-time_data = []
-size_data = []
-size_so_far = 0
-get_size_so_far = False
-# Get the total number of bits after 1 second. 
-# After every second, this value is incremented by 1 so we can get the bitrate for the 2nd second, 3rd second, etc.
-time_to_check = 1
+# We need to get the values of pkt_pts_time and pkt_size
+entries = 'frame=pkt_pts_time,pkt_size'
 
 # This command will get the necessary data from the file.
 cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
-    '-select_streams', stream_specifier, '-show_entries', 'frame=pkt_pts_time,pkt_size',
+    '-select_streams', stream_specifier, '-show_entries', entries,
     '-of', 'default=noprint_wrappers=1',
     args.file_path
 ]
-
-eta_string = ''
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-start = time()
-
-for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-    
-    if 'pkt_pts_time' in line:
-        timestamp = float(line[13:])
-
-        if timestamp >= time_to_check:
-            update_txt_file(f'{timestamp} --> ', output_folder)
-            time_data.append(timestamp)
-
-            percentage_complete = round(100.0 * (timestamp / duration), 1)
-
-            eta = (time() - start) * (duration - timestamp)
-            start = time()
-            minutes = round(eta / 60)
-            seconds = f'{round(eta % 60):02d}'
-            
-            if minutes >= 2:
-                eta_string = f'| ETA: ~{minutes} minutes'
-
-            print(f'Progress: {percentage_complete}% {eta_string}', end='\r')
-
-            time_to_check += 1 
-            get_size_so_far = True
-        else:
-            get_size_so_far = False
-
-    elif 'pkt_size' in line:
-        if get_size_so_far:
-            update_txt_file(f'{round(size_so_far)} kbps\n', output_folder)
-            size_data.append(size_so_far)
-            size_so_far = 0
-        else:
-            size_so_far += (int(line[9:]) * 8) / 1000
-            # Multiplied by 8 to convert bytes to bits, then divided by 1000 to convert to kbps
-
-min = round(min(size_data), 1)
-max = round(max(size_data), 1)
-update_txt_file(f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps', output_folder)
-
-graph_title = filename if not args.graph_title else args.graph_title
+time_data, size_data = parse_ffprobe_output(process, filename_without_ext, file_duration)
 
 # Clear the progress and ETA information.
 width, height = os.get_terminal_size()
 print('\r' + ' ' * (width - 1) + '\r', end='')
 
+min = round(min(size_data), 1)
+max = round(max(size_data), 1)
+write_to_txt_file(filename_without_ext, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
+
+graph_title = filename if not args.graph_title else args.graph_title
 print('Creating the graph...')
 plt.suptitle(graph_title)
 plt.xlabel('Time (s)')
 plt.ylabel('Bitrate (kbps)')
-#plt.fill_between(time_data, size_data)
+if args.graph_type == 'filled':
+    plt.fill_between(time_data, size_data)
 plt.plot(time_data, size_data)
-#plt.show()
-plt.savefig(os.path.join(output_folder, f'{filename_without_ext}.png'))
-print(f'Done! Check out the "{output_folder}" folder.')
+print('Done! The graph will open in a new window.')
+plt.show()

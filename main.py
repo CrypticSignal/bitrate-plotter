@@ -158,9 +158,6 @@ graph_title = filename if not args.graph_title else args.graph_title
 width, height = os.get_terminal_size()
 print('\r' + ' ' * (width - 1) + '\r', end='')
 
-num_data_points = len(time_data)
-num_data_points_to_plot = 100
-
 print('Creating the graph...')
 plt.suptitle(graph_title)
 plt.xlabel('Time (s)')

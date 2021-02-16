@@ -6,7 +6,7 @@ import io
 from time import time
 import matplotlib.pyplot as plt
 
-from utils import line, show_progress_bar, update_txt_file
+from utils import show_progress_bar, update_txt_file
 
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 
@@ -113,8 +113,7 @@ process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 start = time()
 
 for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-    line = line.strip()
-
+    
     if 'pkt_pts_time' in line:
         timestamp = float(line[13:])
 

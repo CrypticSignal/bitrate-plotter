@@ -158,6 +158,9 @@ graph_title = filename if not args.graph_title else args.graph_title
 width, height = os.get_terminal_size()
 print('\r' + ' ' * (width - 1) + '\r', end='')
 
+num_data_points = len(time_data)
+num_data_points_to_plot = 100
+
 print('Creating the graph...')
 plt.suptitle(graph_title)
 plt.xlabel('Time (s)')
@@ -165,5 +168,5 @@ plt.ylabel('Bitrate (kbps)')
 #plt.fill_between(time_data, size_data)
 plt.plot(time_data, size_data)
 #plt.show()
-plt.savefig(os.path.join(output_folder, f'filled.png'))
+plt.savefig(os.path.join(output_folder, f'{filename_without_ext}.png'))
 print(f'Done! Check out the "{output_folder}" folder.')

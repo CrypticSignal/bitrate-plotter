@@ -6,7 +6,7 @@ import io
 from time import time
 import matplotlib.pyplot as plt
 
-from utils import show_progress_bar, update_txt_file
+from utils import update_txt_file
 
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 
@@ -86,7 +86,7 @@ else:
     print(f'The bitrate of stream {args.stream_specifier} will be analysed.')
 
 duration_cmd = [
-    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
+    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()), '-select_streams', stream_specifier,
     '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', args.file_path
 ]
 
@@ -104,26 +104,36 @@ time_to_check = 1
 # This command will get the necessary data from the file.
 cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
-    '-select_streams', stream_specifier, '-show_frames', args.file_path
+    '-select_streams', stream_specifier, '-show_entries', 'frame=pkt_pts_time,pkt_size',
+    '-of', 'default=noprint_wrappers=1',
+    args.file_path
 ]
 
+eta_string = ''
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-
 start = time()
 
 for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-
+    
     if 'pkt_pts_time' in line:
         timestamp = float(line[13:])
 
         if timestamp >= time_to_check:
             update_txt_file(f'{timestamp} --> ', output_folder)
             time_data.append(timestamp)
+
+            percentage_complete = round(100.0 * (timestamp / duration), 1)
+
             eta = (time() - start) * (duration - timestamp)
+            start = time()
             minutes = round(eta / 60)
             seconds = f'{round(eta % 60):02d}'
-            show_progress_bar(timestamp, duration, extra_info=f'(ETA: {minutes}:{seconds} [M:S])')
-            start = time()
+            
+            if minutes >= 2:
+                eta_string = f'| ETA: ~{minutes} minutes'
+
+            print(f'Progress: {percentage_complete}% {eta_string}', end='\r')
+
             time_to_check += 1 
             get_size_so_far = True
         else:
@@ -138,19 +148,22 @@ for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
             size_so_far += (int(line[9:]) * 8) / 1000
             # Multiplied by 8 to convert bytes to bits, then divided by 1000 to convert to kbps
 
-width, height = os.get_terminal_size()
-print('\r' + ' ' * (width - 1) + '\r', end='')
-
 min = round(min(size_data), 1)
 max = round(max(size_data), 1)
 update_txt_file(f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps', output_folder)
 
 graph_title = filename if not args.graph_title else args.graph_title
 
+# Clear the progress and ETA information.
+width, height = os.get_terminal_size()
+print('\r' + ' ' * (width - 1) + '\r', end='')
+
 print('Creating the graph...')
 plt.suptitle(graph_title)
 plt.xlabel('Time (s)')
 plt.ylabel('Bitrate (kbps)')
+#plt.fill_between(time_data, size_data)
 plt.plot(time_data, size_data)
-plt.savefig(os.path.join(output_folder, f'{filename_without_ext}.png'))
+#plt.show()
+plt.savefig(os.path.join(output_folder, f'filled.png'))
 print(f'Done! Check out the "{output_folder}" folder.')

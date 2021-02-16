@@ -1,13 +1,15 @@
 # Bitrate Variation Plotter
-A command line program that plots a graph showing the variation of the bitrate throughout the specified audio/video file.
+A command line program that plots a graph showing the variation of the bitrate throughout the specified audio/video file. The graph can be "filled" or "unfilled":
 
-You can find an example graph below:
+**Unfilled:**
 
-![Example Graph](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graph.png)
+![Unfilled Graph](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Unfilled%20Graph%20Example.png)
 
-*The above graph is for a Variable Bitrate (VBR) MP3 file, encoded using the -V0 setting of the [LAME](https://lame.sourceforge.io/) encoder.*
+**Filled:**
 
-In addition to this, the data used to plot the graph is saved in a file named `Raw Data.txt`. The data is in the format `timestamp --> bitrate`. Here is a sample:
+![Filled Graph](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Filled%20Graph%20Example.png)
+
+In addition to this, the data used to plot the graph is saved in a .txt file. The data is in the format `timestamp --> bitrate`. Here is a sample:
 ```
 1.008 --> 223 kbps
 2.016 --> 257 kbps
@@ -26,11 +28,17 @@ In addition to this, the data used to plot the graph is saved in a file named `R
 - FFprobe executable in your PATH.
 
 # Usage
-Using this program is very simple. As an example, to analyse the video bitrate of a file named video.mp4 in the current directory, enter `python main.py -f video.mp4`. To analyse a specific stream, you can use the `-s` argument, e.g. `python main.py -f video.mp4 -s a:0`.
+Simply specify the path of the file you wish to analyse, as well as your desired graph type. Here's an example:
+
+`python main.py -f video.mp4 --graph-type filled`
+
+To analyse a specific stream, use the `-s`/`--stream-specifier` argument:
+
+`python main.py -f video.mp4 -s a:0 --graph-type filled`
 
 You can find the output of `python main.py -h` below:
 ```
-usage: main.py [-h] -f FILE_PATH [-o OUTPUT_FOLDER] [-s STREAM_SPECIFIER] [-t GRAPH_TITLE]
+usage: main.py [-h] -f FILE_PATH -g {filled,unfilled} [-s STREAM_SPECIFIER]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -38,17 +46,11 @@ optional arguments:
                         Enter the path of the file that you want to analyse.
                         If the path contains a space, it must be surrounded in double quotes.
                         Example: -f "C:/Users/H/Desktop/my file.mp4"
-  -o OUTPUT_FOLDER, --output-folder OUTPUT_FOLDER
-                        Change the name of the folder where the data will be saved.
-                        If the desired folder name contains a space, it must be surrounded in double quotes.
-                        Default folder name: (<file being analysed>).
-                        i.e. if the file being analysed is video.mp4, the output folder will be named (video.mp4)
-                        Example: -o "my folder"
+  -g {filled,unfilled}, --graph-type {filled,unfilled}
+                        Specify the type of graph that should be created.
+                        To see the difference between a filled and unfilled graph, check out the example graph files.
   -s STREAM_SPECIFIER, --stream-specifier STREAM_SPECIFIER
                         Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse.
                         The defaults for audio and video files are a:0 and V:0, respectively.
                         Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1
-  -t GRAPH_TITLE, --graph-title GRAPH_TITLE
-                        Specify a title for the output graph.
-                        By default, the title of the graph will simply be the name of the file that was analysed.
 ```

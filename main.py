@@ -35,6 +35,9 @@ parser.add_argument(
 args = parser.parse_args()
 filename = Path(args.file_path).name
 filename_without_ext = Path(args.file_path).stem
+# The bitrate every second will be saved to this file in the format timestamp --> bitrate 
+# This is so users can see the specific values that were used to plot the graph.
+# The bitrates in this file are rounded to the nearest integer.
 raw_data_filename = f'{filename_without_ext}.txt'
 
 # This command will information about file's first stream.
@@ -80,7 +83,7 @@ entries = 'packet=pts_time,size'
 cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
     '-select_streams', stream_specifier, 
-    '-show_entries', entries, '-of', 'default=noprint_wrappers=1:nokey=1', '-print_format', 'csv',
+    '-show_entries', entries, '-of', 'csv',
     args.file_path
 ]
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -88,7 +91,7 @@ process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 # otherwise there will be duplicate data.
 with open(raw_data_filename, 'w'): pass
 # Parse the ffprobe output.
-time_data, size_data = parse_ffprobe_output(process, raw_data_filename, file_duration)
+time_data, size_data = parse_ffprobe_output(process, 'collections.txt', file_duration)
 
 min = round(min(size_data), 1)
 max = round(max(size_data), 1)

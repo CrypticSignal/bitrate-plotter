@@ -14,19 +14,20 @@ def parse_ffprobe_output(process, raw_data_filename, file_duration):
     time_to_check = 1
 
     timestamp_to_size = {}
-    print('Linking the timestamps to their associated packet sizes...')
+    print('Creating a dictionary where the timestamps are the keys and the packet sizes are the values...')
 
     for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-        data_array = line.split(',')
-        timestamp_to_size[float(data_array[1])] = int(data_array[2][:-1])
+        timestamp = float(line.split(',')[1])
+        packet_size = line.split(',')[2]
+        timestamp_to_size[timestamp] = packet_size
 
-        percentage_complete = round(((float(data_array[1]) / file_duration) * 100.0), 1)
+        percentage_complete = round(((timestamp / file_duration) * 100.0), 1)
         print(f'Progress: {percentage_complete}%', end='\r')
     
     clear_current_line_in_terminal() # Clears the progress and ETA.
     print('Done!')
-
-    ordered_dict = collections.OrderedDict(sorted(timestamp_to_size.items()))
+    # Create a new dictionary where the entries are ordered by timestamp value (ascending order).
+    ordered_dict = dict(sorted(timestamp_to_size.items()))
     print('Calculating the bitrates...')
 
     for timestamp, pkt_size in ordered_dict.items():
@@ -41,8 +42,8 @@ def parse_ffprobe_output(process, raw_data_filename, file_duration):
             sum_pkt_size = 0
             time_to_check += 1 
         else:
-            sum_pkt_size += (pkt_size * 8) / 1000
-            # Multiplied by 8 to convert bytes to bits, then divided by 1000 to convert to kbps
+            sum_pkt_size += (int(pkt_size) * 8) / 1000
+            # Multiplied by 8 to convert bytes to bits, then divided by 1000 to convert to kbps.
 
     clear_current_line_in_terminal()
     return time_data, size_data

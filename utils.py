@@ -1,3 +1,11 @@
-def write_to_txt_file(filename_without_ext, data, mode='a'):
-    with open(f'{filename_without_ext}.txt', mode) as f:
+import os 
+
+
+def clear_current_line_in_terminal():
+    width, height = os.get_terminal_size()
+    print('\r' + ' ' * (width - 1) + '\r', end='')
+
+
+def write_to_txt_file(filename, data, mode='a'):
+    with open(filename, mode) as f:
         f.write(data)

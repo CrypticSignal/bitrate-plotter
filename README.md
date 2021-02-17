@@ -26,6 +26,7 @@ In addition to this, the data used to plot the graph is saved in a .txt file. Th
 # Requirements 
 - Python 3.6+
 - FFprobe executable in your PATH.
+- `pip install -r requirements.txt`
 
 # Usage
 Simply specify the path of the file you wish to analyse, as well as your desired graph type. Here's an example:

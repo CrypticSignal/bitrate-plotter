@@ -1,13 +1,12 @@
 from argparse import ArgumentParser, RawTextHelpFormatter
-from pathlib import Path
 import os
+from pathlib import Path
 import subprocess
-import io
-from time import time
+
 import matplotlib.pyplot as plt
 
 from ffprobe_output_parser import parse_ffprobe_output
-from utils import write_to_txt_file
+from utils import clear_current_line_in_terminal, write_to_txt_file
 
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 parser.add_argument(
@@ -36,6 +35,7 @@ parser.add_argument(
 args = parser.parse_args()
 filename = Path(args.file_path).name
 filename_without_ext = Path(args.file_path).stem
+raw_data_filename = f'{filename_without_ext}.txt'
 
 # This command will information about file's first stream.
 cmd = [
@@ -65,33 +65,34 @@ else:
     print(f'The bitrate of stream {args.stream_specifier} will be analysed.')
 
 duration_cmd = [
-    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()), '-select_streams', stream_specifier,
-    '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', args.file_path
+    'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
+    '-select_streams', stream_specifier,
+    '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
+    args.file_path
 ]
 
 process = subprocess.Popen(duration_cmd, stdout=subprocess.PIPE)
 file_duration = float(process.stdout.read().decode('utf-8'))
 
-# We need to get the values of pkt_pts_time and pkt_size
-entries = 'frame=pkt_pts_time,pkt_size'
+# We only care about the pts_time and size values.
+entries = 'packet=pts_time,size'
 
-# This command will get the necessary data from the file.
 cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
-    '-select_streams', stream_specifier, '-show_entries', entries,
-    '-of', 'default=noprint_wrappers=1',
+    '-select_streams', stream_specifier, 
+    '-show_entries', entries, '-of', 'default=noprint_wrappers=1:nokey=1', '-print_format', 'csv',
     args.file_path
 ]
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-time_data, size_data = parse_ffprobe_output(process, filename_without_ext, file_duration)
-
-# Clear the progress and ETA information.
-width, height = os.get_terminal_size()
-print('\r' + ' ' * (width - 1) + '\r', end='')
+# In case the same file is analysed again, clear the contents of the raw data .txt file, 
+# otherwise there will be duplicate data.
+with open(raw_data_filename, 'w'): pass
+# Parse the ffprobe output.
+time_data, size_data = parse_ffprobe_output(process, raw_data_filename, file_duration)
 
 min = round(min(size_data), 1)
 max = round(max(size_data), 1)
-write_to_txt_file(filename_without_ext, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
+write_to_txt_file(raw_data_filename, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
 
 print('Creating the graph...')
 plt.suptitle(filename)

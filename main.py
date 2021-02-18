@@ -30,7 +30,7 @@ parser.add_argument(
     '-se', '--show-entries', 
     type=str,
     default='packet=pts_time,size',
-    help='Use FFprobe\'s -show_entries option to specify the what to output. Example: -se frame=key_frame,pkt_pts_time'
+    help='Use FFprobe\'s -show_entries option to specify what to output. Example: -se frame=key_frame,pkt_pts_time'
 )
 parser.add_argument(
     '-ngm', '--no-graph-mode', 

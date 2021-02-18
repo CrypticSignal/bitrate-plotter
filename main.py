@@ -84,7 +84,7 @@ else:
 file_duration = get_file_duration(args.file_path, stream_specifier)
 
 if 'V' in stream_specifier or 'v' in stream_specifier:
-    calc_number_of_frames(args.file_path, stream_specifier, file_duration):
+    number_of_frames = calc_number_of_frames(args.file_path, stream_specifier, file_duration)
 
 # To calculate the bitrate every second, FFprobe needs to output the following entries.
 entries = 'packet=pts_time,size'

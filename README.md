@@ -39,19 +39,19 @@ To analyse a specific stream, use the `-s`/`--stream-specifier` argument:
 
 You can find the output of `python main.py -h` below:
 ```
-usage: main.py [-h] -f FILE_PATH -g {filled,unfilled} [-s STREAM_SPECIFIER]
+usage: main.py [-h] -f FILE_PATH [-g {filled,unfilled}] [-se SHOW_ENTRIES] [-ngm] [-s STREAM_SPECIFIER]
 
 optional arguments:
   -h, --help            show this help message and exit
   -f FILE_PATH, --file-path FILE_PATH
-                        Enter the path of the file that you want to analyse.
-                        If the path contains a space, it must be surrounded in double quotes.
-                        Example: -f "C:/Users/H/Desktop/my file.mp4"
+                        Enter the path of the file that you want to analyse. If the path contains a space, it must be surrounded in double quotes. Example: -f
+                        "C:/Users/H/Desktop/my file.mp4" (default: None)
   -g {filled,unfilled}, --graph-type {filled,unfilled}
-                        Specify the type of graph that should be created.
-                        To see the difference between a filled and unfilled graph, check out the example graph files.
+                        Specify the type of graph that should be created. To see the difference between a filled and unfilled graph, check out the example graph files. (default: unfilled)
+  -se SHOW_ENTRIES, --show-entries SHOW_ENTRIES
+                        Use FFprobe's -show_entries option to specify what to output. Example: -se frame=key_frame,pkt_pts_time (default: packet=pts_time,size)
+  -ngm, --no-graph-mode
+                        Enable "no graph mode" which simply writes the output of ffprobe to a .txt file. You should also use the --show-entries argument to specify what information you want ffprobe to output. (default: False)
   -s STREAM_SPECIFIER, --stream-specifier STREAM_SPECIFIER
-                        Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse.
-                        The defaults for audio and video files are a:0 and V:0, respectively.
-                        Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1
+                        Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse. The defaults for audio and video files are a:0 and V:0, respectively. Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1 (default: None)
 ```

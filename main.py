@@ -5,8 +5,9 @@ from pathlib import Path
 import subprocess
 
 import matplotlib.pyplot as plt
+import mplcursors
 
-from ffprobe_output_parser import parse_ffprobe_output
+from ffprobe_output_parser import parse_ffprobe_output, get_gop_bitrates
 from utils import calc_number_of_frames, get_file_duration, write_to_txt_file
 
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -20,11 +21,16 @@ parser.add_argument(
 )
 parser.add_argument(
     '-g', '--graph-type',
-    #required=True,
     choices=['filled', 'unfilled'],
     default='unfilled',
     help='Specify the type of graph that should be created. '
          'To see the difference between a filled and unfilled graph, check out the example graph files.'
+)
+parser.add_argument(
+    '-gop',
+    action='store_true',
+    help='Instead of plotting the bitrate every second, plot the bitrate of each GOP. '
+         'This plots GOP end time (x-axis, in seconds) against GOP bitrate (y-axis, kbps).' 
 )
 parser.add_argument(
     '-se', '--show-entries', 
@@ -49,10 +55,6 @@ parser.add_argument(
 args = parser.parse_args()
 filename = Path(args.file_path).name
 filename_without_ext = Path(args.file_path).stem
-# The bitrate every second will be saved to this file in the format timestamp --> bitrate 
-# This is so users can see the specific values that were used to plot the graph
-# The bitrates in this file are rounded to the nearest integer.
-timestamp_bitrate_file = f'{filename_without_ext}.txt'
 
 # This command will information about file's first stream.
 cmd = [
@@ -91,59 +93,86 @@ entries = 'packet=pts_time,size'
 
 if args.no_graph_mode:
     entries = args.show_entries
+elif args.gop:
+    entries = 'frame=key_frame,pkt_pts_time,pkt_size'
 
 # The FFprobe command that will output the timestamps and packet sizes in CSV format.
 cmd = [
     'ffprobe', '-v', 'error', '-threads', str(os.cpu_count()),
     '-select_streams', stream_specifier, 
-    '-show_entries', entries, '-of', 'csv',
+    '-show_entries', entries, '-of', 'csv=print_section=0:nk=0',
     args.file_path
 ]
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-if args.no_graph_mode:
-    ffprobe_output_path = f'{filename} (FFprobe Data)/{entries}.txt'
-    os.makedirs(f'{filename} (FFprobe Data)', exist_ok=True)
-    frame_count = 0
-    gop_length = 0
-    print('-----------------------------------------------------------------------------------------------------------')
-    print(f'{args.show_entries} data is being written to /{ffprobe_output_path}...')
+if args.gop:
+    data_output_path = f'[{filename}]/Keyframes & GOPs.txt'
+    os.makedirs(f'[{filename}]', exist_ok=True)
+    with open(data_output_path, 'w'): pass
 
-    if 'key_frame' in args.show_entries or 'pict_type' in args.show_entries:
-        for line in io.TextIOWrapper(process.stdout):
-            frame_count += 1
-            percentage_progress = round((frame_count / number_of_frames) * 100, 1)
-            print(f'Progress: {percentage_progress}%', end='\r')
-            gop_length += 1
-            # When splitting the CSV output, if one o 
-            if '1' in line.strip().split(',') or 'I' in line.strip().split(',') or \
-               'Iside_data' in line.strip().split(','):
-                print('-----------------------------------------------------------------------------------------------')
-                print(f'Frame {frame_count} is a keyframe/I-frame')
-                if gop_length != 1:
-                    print(f'GOP length was {gop_length} frames')  
-                # We have reached the next keyframe, set gop_length to 0 to calculate the next GOP length.
-                gop_length = 0 
-    else:
-        for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-            write_to_txt_file(ffprobe_output_path, line)
-    print(f'Done! Check out the following path: /{ffprobe_output_path}')
+    gop_end_times, gop_bitrates = get_gop_bitrates(process, number_of_frames, data_output_path)
 
-else:
-    with open(timestamp_bitrate_file, 'w'): pass
-    # Parse the ffprobe output save the timestamps and bitrates in lists named time_data and size_data, respectively.
-    time_data, size_data = parse_ffprobe_output(process, timestamp_bitrate_file, file_duration)
-
-    min = round(min(size_data), 1)
-    max = round(max(size_data), 1)
-    write_to_txt_file(timestamp_bitrate_file, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
-
-    print('Creating the graph...')
     plt.suptitle(filename)
-    plt.xlabel('Time (s)')
-    plt.ylabel('Bitrate (kbps)')
+    plt.xlabel('GOP end time (s)')
+    plt.ylabel('GOP bitrate (kbps)')
+
     if args.graph_type == 'filled':
-        plt.fill_between(time_data, size_data)
-    plt.plot(time_data, size_data)
+        plt.fill_between(gop_end_times, gop_bitrates)
+
+    plt.plot(gop_end_times, gop_bitrates, marker='x')
+    # Use mplcursors to show the X and Y value when hovering over a point on the line.
+    cursor = mplcursors.cursor(hover=True)
+    cursor.connect(
+        "add", lambda sel: sel.annotation.set_text(f'{round(sel.target[0], 1)}, {round(sel.target[1], 1)}')
+    )
     print('Done! The graph will open in a new window.')
     plt.show()
+
+else:
+    if args.no_graph_mode:
+        ffprobe_output_path = f'{filename} (FFprobe Data)/{entries}.txt'
+        os.makedirs(f'{filename} (FFprobe Data)', exist_ok=True)
+        frame_count = 0
+        gop_length = 0
+        print('-----------------------------------------------------------------------------------------------------------')
+        print(f'{args.show_entries} data is being written to /{ffprobe_output_path}...')
+
+        if 'key_frame' in args.show_entries or 'pict_type' in args.show_entries:
+            for line in io.TextIOWrapper(process.stdout):
+                frame_count += 1
+                percentage_progress = round((frame_count / number_of_frames) * 100, 1)
+                print(f'Progress: {percentage_progress}%', end='\r')
+                gop_length += 1
+                # When splitting the CSV output, if one o 
+                if '1' in line.strip().split(',') or 'I' in line.strip().split(',') or \
+                'Iside_data' in line.strip().split(','):
+                    print('-----------------------------------------------------------------------------------------------')
+                    print(f'Frame {frame_count} is a keyframe/I-frame')
+                    if gop_length != 1:
+                        print(f'GOP length was {gop_length} frames')  
+                    # We have reached the next keyframe, set gop_length to 0 to calculate the next GOP length.
+                    gop_length = 0 
+        else:
+            for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
+                write_to_txt_file(ffprobe_output_path, line)
+        print(f'Done! Check out the following path: /{ffprobe_output_path}')
+
+    else:
+        timestamp_bitrate_file = f'{filename_without_ext}.txt'
+        with open(timestamp_bitrate_file, 'w'): pass
+        # Parse the ffprobe output save the timestamps and bitrates in the time_data and size_data lists, respectively.
+        time_data, size_data = parse_ffprobe_output(process, timestamp_bitrate_file, file_duration)
+
+        min = round(min(size_data), 1)
+        max = round(max(size_data), 1)
+        write_to_txt_file(timestamp_bitrate_file, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
+
+        print('Creating the graph...')
+        plt.suptitle(filename)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Bitrate (kbps)')
+        if args.graph_type == 'filled':
+            plt.fill_between(time_data, size_data)
+        plt.plot(time_data, size_data)
+        print('Done! The graph will open in a new window.')
+        plt.show()

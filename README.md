@@ -1,15 +1,19 @@
 # Bitrate Variation Plotter
-A command line program that plots a graph showing the variation of the bitrate throughout the specified audio/video file. The graph can be "filled" or "unfilled":
+A command line program that plots one of the following graphs:
 
-**Unfilled:**
+**[1]** A graph showing the bitrate every second.
 
-![Unfilled Graph](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Unfilled%20Graph%20Example.png)
+**[2]** A graph showing bitrate of every GOP (you must specify the `-gop` argument).
 
-**Filled:**
+The graph can be "filled" or "unfilled". The examples below show an unfilled graph of type **[1]** and **[2]**, respectively:
 
-![Filled Graph](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Filled%20Graph%20Example.png)
+![[1]](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png)
 
-In addition to this, the data used to plot the graph is saved in a .txt file. The data is in the format `timestamp --> bitrate`. Here is a sample:
+![[2]](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/GOP%20bitrates%20(unfilled).png)
+
+*To see examples of filled graphs, check out the "Example Graphs" folder.* 
+
+When opting for graph type **[1]**, the data used to plot the graph is saved in a filed named `BitrateEverySecond.txt`. The data is in the format `timestamp --> bitrate`. Here is a sample:
 ```
 1.008 --> 223 kbps
 2.016 --> 257 kbps
@@ -22,6 +26,14 @@ In addition to this, the data used to plot the graph is saved in a .txt file. Th
 9.0 --> 260 kbps
 10.008 --> 266 kbps
 ```
+When opting for graph type **[2]**, the raw FFprobe output is saved in a file named `Keyframes & GOPs.txt`. Each line in this file represents a frame, and you can see the following data:
+1. Whether the frame is a keyframe (if you see `key_frame=1`, that frame is a keyframe).
+2. The timestamp of the frame (`pts_pkt_time`).
+3. The size of the frame (`pkt_size`).
+
+You can find an example line below:
+
+`key_frame=1,pkt_pts_time=0.000000,pkt_size=250439`
 
 # Requirements 
 - Python 3.6+
@@ -29,16 +41,10 @@ In addition to this, the data used to plot the graph is saved in a .txt file. Th
 - `pip install -r requirements.txt`
 
 # Usage
-Simply specify the path of the file you wish to analyse, as well as your desired graph type. Here's an example:
-
-`python main.py -f video.mp4 --graph-type filled`
-
-To analyse a specific stream, use the `-s`/`--stream-specifier` argument:
-
-`python main.py -f video.mp4 -s a:0 --graph-type filled`
-
 You can find the output of `python main.py -h` below:
 ```
+usage: main.py [-h] -f FILE_PATH [-g {filled,unfilled}] [-gop] [-se SHOW_ENTRIES] [-ngm] [-s STREAM_SPECIFIER]
+
 optional arguments:
   -h, --help            show this help message and exit
   -f FILE_PATH, --file-path FILE_PATH

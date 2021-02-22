@@ -1,4 +1,4 @@
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentParser
 import io
 import os
 from pathlib import Path
@@ -7,10 +7,10 @@ import subprocess
 import matplotlib.pyplot as plt
 import mplcursors
 
-from ffprobe_output_parser import parse_ffprobe_output, get_gop_bitrates
+from ffprobe_output_parser import get_bitrate_every_second, get_gop_bitrates
 from utils import calc_number_of_frames, get_file_duration, write_to_txt_file
 
-parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+parser = ArgumentParser()
 parser.add_argument(
     '-f', '--file-path', 
     type=str, 
@@ -23,7 +23,7 @@ parser.add_argument(
     '-g', '--graph-type',
     choices=['filled', 'unfilled'],
     default='unfilled',
-    help='Specify the type of graph that should be created. '
+    help='Specify the type of graph that should be created. The default graph type is "unfilled". '
          'To see the difference between a filled and unfilled graph, check out the example graph files.'
 )
 parser.add_argument(
@@ -36,7 +36,8 @@ parser.add_argument(
     '-se', '--show-entries', 
     type=str,
     default='packet=pts_time,size',
-    help='Use FFprobe\'s -show_entries option to specify what to output. Example: -se frame=key_frame,pkt_pts_time'
+    help='Only applicable if --no-graph-mode is specified. '
+         'Use FFprobe\'s -show_entries option to specify what to output. Example: -se frame=key_frame,pkt_pts_time'
 )
 parser.add_argument(
     '-ngm', '--no-graph-mode', 
@@ -45,11 +46,12 @@ parser.add_argument(
          'You should also use the --show-entries argument to specify what information you want ffprobe to output.'
 )
 parser.add_argument(
-    '-s', '--stream-specifier', 
+    '-s', '--stream-specifier',
     type=str, 
     help='Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse. '
          'The defaults for audio and video files are a:0 and V:0, respectively. '
-         'Stream index starts at 0, therefore, as an example, to target the 2nd audio stream, enter -s a:1'
+         'Note that stream index starts at 0. '
+         'As an example, to target the 2nd audio stream, enter: --stream-specifier a:1'
 )
 
 args = parser.parse_args()
@@ -134,7 +136,7 @@ else:
         os.makedirs(f'{filename} (FFprobe Data)', exist_ok=True)
         frame_count = 0
         gop_length = 0
-        print('-----------------------------------------------------------------------------------------------------------')
+        print('-------------------------------------------------------------------------------------------------------')
         print(f'{args.show_entries} data is being written to /{ffprobe_output_path}...')
 
         if 'key_frame' in args.show_entries or 'pict_type' in args.show_entries:
@@ -146,8 +148,8 @@ else:
                 # When splitting the CSV output, if one o 
                 if '1' in line.strip().split(',') or 'I' in line.strip().split(',') or \
                 'Iside_data' in line.strip().split(','):
-                    print('-----------------------------------------------------------------------------------------------')
-                    print(f'Frame {frame_count} is a keyframe/I-frame')
+                    print('-------------------------------------------------------------------------------------------')
+                    print(f'Frame {frame_count} is an I-frame')
                     if gop_length != 1:
                         print(f'GOP length was {gop_length} frames')  
                     # We have reached the next keyframe, set gop_length to 0 to calculate the next GOP length.
@@ -158,13 +160,14 @@ else:
         print(f'Done! Check out the following path: /{ffprobe_output_path}')
 
     else:
-        timestamp_bitrate_file = f'{filename_without_ext}.txt'
+        timestamp_bitrate_file = f'[{filename}]/BitrateEverySecond.txt'
+        os.makedirs(f'[{filename}]', exist_ok=True)
         with open(timestamp_bitrate_file, 'w'): pass
         # Parse the ffprobe output save the timestamps and bitrates in the time_data and size_data lists, respectively.
-        time_data, size_data = parse_ffprobe_output(process, timestamp_bitrate_file, file_duration)
+        x_axis_values, bitrate_every_second = get_bitrate_every_second(process, timestamp_bitrate_file, file_duration)
 
-        min = round(min(size_data), 1)
-        max = round(max(size_data), 1)
+        min = round(min(bitrate_every_second), 1)
+        max = round(max(bitrate_every_second), 1)
         write_to_txt_file(timestamp_bitrate_file, f'\nMin Bitrate: {min} kbps\nMax Bitrate: {max} kbps')
 
         print('Creating the graph...')
@@ -172,7 +175,7 @@ else:
         plt.xlabel('Time (s)')
         plt.ylabel('Bitrate (kbps)')
         if args.graph_type == 'filled':
-            plt.fill_between(time_data, size_data)
-        plt.plot(time_data, size_data)
+            plt.fill_between(x_axis_values, bitrate_every_second)
+        plt.plot(x_axis_values, bitrate_every_second)
         print('Done! The graph will open in a new window.')
         plt.show()

@@ -1,17 +1,23 @@
-# Bitrate Variation Plotter
+# Bitrate Plotter
 A command line program that plots one of the following graphs:
 
-**[1]** A graph showing the bitrate every second.
+**[1]** A graph showing the bitrate every second. The graph can be "filled" or "unfilled".
 
-**[2]** A graph showing bitrate of every GOP (you must specify the `-gop` argument).
+**[2]** A graph showing bitrate of every closed GOP (you must specify the `-gop` argument). Applicable to video files only.
 
-The graph can be "filled" or "unfilled". The examples below show an unfilled graph of type **[1]** and **[2]**, respectively:
+You can find an example of each graph type below:
 
-![[1]](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png)
+**Graph type [1] (unfilled):**
 
-![[2]](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/GOP%20bitrates%20(unfilled).png)
+![Graph type [1] (unfilled)](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png)
 
-*To see examples of filled graphs, check out the "Example Graphs" folder.* 
+*Image 1: a graph showing the bitrate every second. To see an example of a filled graph, check out the "Example Graphs" folder.* 
+
+**Graph type [2]:**
+
+![Graph type [2]](https://github.com/CrypticSignal/bitrate-plotter/blob/main/Example%20Graphs/Closed%20GOP%20bitrates.png)
+
+*Image 2: a graph showing the bitrate of every closed GOP. The distances between the lines show the length (in seconds) of each closed GOP.*
 
 When opting for graph type **[1]**, the data used to plot the graph is saved in a filed named `BitrateEverySecond.txt`. The data is in the format `timestamp --> bitrate`. Here is a sample:
 ```
@@ -29,7 +35,7 @@ When opting for graph type **[1]**, the data used to plot the graph is saved in 
 When opting for graph type **[2]**, the raw FFprobe output is saved in a file named `Keyframes & GOPs.txt`. Each line in this file represents a frame, and you can see the following data:
 1. Whether the frame is a keyframe (if you see `key_frame=1`, that frame is a keyframe).
 2. The timestamp of the frame (`pts_pkt_time`).
-3. The size of the frame (`pkt_size`).
+3. The size of the frame in bytes (`pkt_size`).
 
 You can find an example line below:
 

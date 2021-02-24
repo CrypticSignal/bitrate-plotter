@@ -121,7 +121,7 @@ if args.gop:
     if args.graph_type == 'filled':
         plt.fill_between(gop_end_times, gop_bitrates)
 
-    plt.plot(gop_end_times, gop_bitrates, marker='x')
+    plt.stem(gop_end_times, gop_bitrates)
     # Use mplcursors to show the X and Y value when hovering over a point on the line.
     cursor = mplcursors.cursor(hover=True)
     cursor.connect(

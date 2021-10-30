@@ -16,6 +16,7 @@
 *.MTS
 *.wmv
 # Miscellaneous
+.DS_Store
 __pycache__
 *.txt
 !requirements.txt

@@ -208,7 +208,7 @@ else:
         )
 
         print("Creating the graph...")
-        plt.suptitle(filename)
+        plt.suptitle(f"{filename}\nMin/Max Bitrate: {min_bitrate}/{max_bitrate} Mbps")
         plt.xlabel("Time (s)")
         plt.ylabel("Bitrate (Mbps)")
         if args.graph_type == "filled":

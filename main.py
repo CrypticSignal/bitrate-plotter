@@ -204,7 +204,7 @@ else:
         )
 
         print("Creating the graph...")
-        plt.suptitle(f"{filename}\nMin: {min_bitrate} | Max: {average_bitrate} | Avg: {max_bitrate} Mbps")
+        plt.suptitle(f"{filename}\nMin: {min_bitrate} | Avg: {average_bitrate} | Max: {max_bitrate} Mbps")
         plt.xlabel("Time (s)")
         plt.ylabel("Bitrate (Mbps)")
         if args.graph_type == "filled":

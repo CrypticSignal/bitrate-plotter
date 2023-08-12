@@ -195,15 +195,16 @@ else:
             process, timestamp_bitrate_file, file_duration
         )
 
+        average_bitrate = round(sum(bitrate_every_second) / len(bitrate_every_second), 3)
         min_bitrate = round(min(bitrate_every_second), 3)
         max_bitrate = round(max(bitrate_every_second), 3)
         write_to_txt_file(
             timestamp_bitrate_file,
-            f"\nMin Bitrate: {min_bitrate} Mbps\nMax Bitrate: {max_bitrate} Mbps",
+            f"\nMin Bitrate: {min_bitrate} Mbps\nAverage Bitrate: {average_bitrate} Mbps\nMax Bitrate: {max_bitrate} Mbps",
         )
 
         print("Creating the graph...")
-        plt.suptitle(f"{filename}\nMin/Max Bitrate: {min_bitrate}/{max_bitrate} Mbps")
+        plt.suptitle(f"{filename}\nMin: {min_bitrate} | Max: {average_bitrate} | Avg: {max_bitrate} Mbps")
         plt.xlabel("Time (s)")
         plt.ylabel("Bitrate (Mbps)")
         if args.graph_type == "filled":

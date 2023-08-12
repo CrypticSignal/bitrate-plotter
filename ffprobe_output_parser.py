@@ -1,5 +1,6 @@
 import io
-from time import time
+
+from tqdm import tqdm
 
 from utils import clear_current_line_in_terminal, write_to_txt_file
 
@@ -13,6 +14,14 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
     # Initialise a dictionary where the decoding timestamps (DTS) will be the keys and the packet sizes will be the values.
     dts_times_and_packet_sizes = {}
 
+    progress_bar = tqdm(
+        total=file_duration,
+        unit='s',
+        dynamic_ncols=True,
+    )
+
+    previous_dts_time = 0
+
     for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
         ## ffprobe will return the time in ms and the size in bytes.
         dts_time, packet_size = line.strip().split(",")
@@ -21,13 +30,15 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
         packet_size = (packet_size * 8) / 1000_000
 
         try:
-            float(dts_time)
+            dts_time = float(dts_time)
         except Exception:
             pass
         else:
-            dts_times_and_packet_sizes[float(dts_time)] = packet_size
-            percentage_complete = round(((float(dts_time) / file_duration) * 100.0), 1)
-            print(f"Progress: {percentage_complete}%", end="\r")
+            dts_times_and_packet_sizes[dts_time] = packet_size
+            progress_bar.update(dts_time - previous_dts_time) 
+            previous_dts_time = dts_time
+
+    progress_bar.close()
 
     clear_current_line_in_terminal()  # Clears the progress and ETA.
     print("Done!")
@@ -56,14 +67,21 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
 
 
 def get_gop_bitrates(process, number_of_frames):
-    frame_count = 0
     keyframe_count = 0
     gop_size = 0
     gop_end_times = []
     gop_bitrates = []
 
+    print(f"Processing ~{number_of_frames} frames...")
+
+    progress_bar = tqdm(
+        total=number_of_frames,
+        unit=' frames',
+        dynamic_ncols=True,
+    )
+
     for line in io.TextIOWrapper(process.stdout):
-        frame_count += 1
+        progress_bar.update(1)
 
         key_frame, pkt_dts_time, pkt_size = line.strip().split(",")
         # Convert from bytes to megabits.
@@ -94,7 +112,5 @@ def get_gop_bitrates(process, number_of_frames):
             else:
                 gop_size += pkt_size
 
-            percentage_progress = round((frame_count / number_of_frames) * 100, 1)
-            print(f"Progress: {percentage_progress}%", end="\r")
-
+    progress_bar.close()
     return gop_end_times, gop_bitrates

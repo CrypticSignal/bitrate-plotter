@@ -1,4 +1,5 @@
 # Bitrate Plotter
+
 A command line program that plots one of the following graphs:
 
 **[1]** A graph showing the bitrate every second. The graph can be "filled" or "unfilled".
@@ -9,45 +10,41 @@ You can find an example of each graph type below:
 
 **Graph type [1] (unfilled):**
 
-![Graph type [1] (unfilled)](https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png)
+![Graph type [1] (unfilled)](<https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png>)
 
-*Image 1: a graph showing the bitrate every second. To see an example of a filled graph, check out the "Example Graphs" folder.* 
+_Image 1: a graph showing the bitrate every second. To see an example of a filled graph, check out the "Example Graphs" folder._
 
 **Graph type [2]:**
 
 ![Graph type [2]](https://github.com/CrypticSignal/bitrate-plotter/blob/main/Example%20Graphs/Closed%20GOP%20bitrates.png)
 
-*Image 2: a graph showing the bitrate of every closed GOP. The distances between the lines show the length (in seconds) of each closed GOP.*
+_Image 2: a graph showing the bitrate of every closed GOP. The distances between the lines show the length (in seconds) of each closed GOP._
 
-When opting for graph type **[1]**, the data used to plot the graph is saved in a filed named `BitrateEverySecond.txt`. The data is in the format `timestamp --> bitrate`. Here is a sample:
+When opting for graph type **[1]**, the data used to plot the graph is saved in a file named `BitrateEverySecond.txt`. The data is in the format `timestamp --> bitrate`. Here's an example:
+
 ```
-1.008 --> 223 kbps
-2.016 --> 257 kbps
-3.0 --> 239 kbps
-4.008 --> 250 kbps
-5.016 --> 263 kbps
-6.0 --> 253 kbps
-7.008 --> 264 kbps
-8.016 --> 267 kbps
-9.0 --> 260 kbps
-10.008 --> 266 kbps
+Timestamp: 1.001 --> 9.201 Mbps
+Timestamp: 2.002 --> 9.256 Mbps
+Timestamp: 3.003 --> 8.46 Mbps
+Timestamp: 4.004 --> 8.898 Mbps
+Timestamp: 5.005 --> 9.429 Mbps
+Timestamp: 6.006 --> 8.784 Mbps
+Timestamp: 7.007 --> 8.522 Mbps
+Timestamp: 8.008 --> 8.276 Mbps
+Timestamp: 9.009 --> 10.259 Mbps
+Timestamp: 10.01 --> 9.958 Mbps
 ```
-When opting for graph type **[2]**, the raw FFprobe output is saved in a file named `Keyframes & GOPs.txt`. Each line in this file represents a frame, and you can see the following data:
-1. Whether the frame is a keyframe (if you see `key_frame=1`, that frame is a keyframe).
-2. The timestamp of the frame (`pts_pkt_time`).
-3. The size of the frame in bytes (`pkt_size`).
 
-You can find an example line below:
+# Requirements
 
-`key_frame=1,pkt_pts_time=0.000000,pkt_size=250439`
-
-# Requirements 
 - Python 3.6+
 - FFprobe executable in your PATH.
 - `pip install -r requirements.txt`
 
 # Usage
+
 You can find the output of `python main.py -h` below:
+
 ```
 usage: main.py [-h] -f FILE_PATH [-g {filled,unfilled}] [-gop] [-se SHOW_ENTRIES] [-ngm] [-s STREAM_SPECIFIER]
 

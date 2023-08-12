@@ -195,8 +195,8 @@ else:
             process, timestamp_bitrate_file, file_duration
         )
 
-        min_bitrate = round(min(bitrate_every_second), 1)
-        max_bitrate = round(max(bitrate_every_second), 1)
+        min_bitrate = round(min(bitrate_every_second), 3)
+        max_bitrate = round(max(bitrate_every_second), 3)
         write_to_txt_file(
             timestamp_bitrate_file,
             f"\nMin Bitrate: {min_bitrate} Mbps\nMax Bitrate: {max_bitrate} Mbps",

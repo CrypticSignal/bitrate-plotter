@@ -43,7 +43,7 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
             percentage_complete = round(100.0 * (dts_time / file_duration), 1)
             print(f'Progress: {percentage_complete}%', end='\r')
             write_to_txt_file(
-                raw_data_filename, f"Timestamp: {dts_time} --> {round(megabits_this_second)} Mbps\n"
+                raw_data_filename, f"Timestamp: {dts_time} --> {round(megabits_this_second, 3)} Mbps\n"
             )
 
             megabits_this_second = packet_size

@@ -130,12 +130,7 @@ cmd = [
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
 if args.gop:
-    data_output_path = f"[{filename}]/Keyframes & GOPs.txt"
-    os.makedirs(f"[{filename}]", exist_ok=True)
-    with open(data_output_path, "w"):
-        pass
-
-    gop_end_times, gop_bitrates = get_gop_bitrates(process, number_of_frames, data_output_path)
+    gop_end_times, gop_bitrates = get_gop_bitrates(process, number_of_frames)
 
     plt.suptitle(filename)
     plt.xlabel("GOP end time (s)")

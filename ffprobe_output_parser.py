@@ -1,9 +1,7 @@
-import collections
 import io
 from time import time
 
 from utils import clear_current_line_in_terminal, write_to_txt_file
-
 
 def get_bitrate_every_second(process, raw_data_filename, file_duration):
     x_axis_values = []
@@ -57,17 +55,15 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
     return x_axis_values, bitrate_every_second
 
 
-def get_gop_bitrates(process, number_of_frames, data_output_path):
+def get_gop_bitrates(process, number_of_frames):
     frame_count = 0
     keyframe_count = 0
-    gop_length = 0
     gop_size = 0
     gop_end_times = []
     gop_bitrates = []
 
     for line in io.TextIOWrapper(process.stdout):
         frame_count += 1
-        write_to_txt_file(data_output_path, line)
 
         key_frame, pkt_dts_time, pkt_size = line.strip().split(",")
         # Convert from bytes to megabits.
@@ -79,12 +75,11 @@ def get_gop_bitrates(process, number_of_frames, data_output_path):
             pass
         else:
             pkt_dts_time = float(pkt_dts_time)
-            # key_frame=1 (with H.264, this is an IDR frame).
+            # IDR frame
             if key_frame == "1":
                 keyframe_count += 1
 
                 if keyframe_count == 1:
-                    gop_length = 1
                     gop_size += pkt_size
                     previous_pkt_dts_time = pkt_dts_time
                 else:
@@ -94,12 +89,9 @@ def get_gop_bitrates(process, number_of_frames, data_output_path):
 
                     previous_pkt_dts_time = pkt_dts_time
                     gop_size = pkt_size
-                    # We've reached a new keyframe, set gop_length to 1.
-                    gop_length = 1
 
-            # key_frame=0
+            # Not an IDR frame.
             else:
-                gop_length += 1
                 gop_size += pkt_size
 
             percentage_progress = round((frame_count / number_of_frames) * 100, 1)

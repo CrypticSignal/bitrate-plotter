@@ -196,18 +196,13 @@ else:
             # GOP length in terms of number of frames.
             gop_length = 0
 
-            if "key_frame" in args.show_entries or "pict_type" in args.show_entries:
+            if "key_frame" in args.show_entries:
                 for line in io.TextIOWrapper(process.stdout):
                     frame_number += 1
                     gop_length += 1
-
                     progress_bar.update(task_id, completed=frame_number)
 
-                    if (
-                        "1" in line.strip().split(",")
-                        or "I" in line.strip().split(",")
-                        or "Iside_data" in line.strip().split(",")
-                    ):
+                    if line.strip() == "1":
                         write_to_txt_file(
                             Path(output_dir).joinpath(
                                 f"{args.show_entries.split("=")[1]}.txt"
@@ -223,8 +218,29 @@ else:
                         if gop_length != 1:
                             print(f"GOP length was {gop_length} frames")
 
+                        # We have reached the next I-frame, set gop_length to 0 to calculate the next GOP length.
+                        gop_length = 0
+
+            elif "pict_type" in args.show_entries:
+                for line in io.TextIOWrapper(process.stdout):
+                    frame_number += 1
+                    gop_length += 1
+
+                    progress_bar.update(task_id, completed=frame_number)
+
+                    pict_type = line.strip()
+
+                    write_to_txt_file(
+                        Path(output_dir).joinpath(
+                            f"{args.show_entries.split("=")[1]}.txt"
+                        ),
+                        f"{'\n' if pict_type == 'I' and frame_number > 1 else ''}Frame {frame_number} is {'an' if pict_type == 'I' else 'a'} {pict_type}-frame\n{'GOP length was ' + str(gop_length) + ' frames\n\n' if pict_type == "I" and gop_length != 1 else ''}",
+                    )
+
+                    if pict_type == "I":
                         # We have reached the next keyframe, set gop_length to 0 to calculate the next GOP length.
                         gop_length = 0
+
             else:
                 for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
                     frame_number += 1

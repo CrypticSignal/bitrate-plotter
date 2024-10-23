@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, RawTextHelpFormatter
 import io
 import os
 from pathlib import Path
@@ -18,14 +18,14 @@ from rich.progress import (
 from ffprobe_output_parser import get_bitrate_every_second, get_gop_bitrates
 from utils import calc_number_of_frames, get_file_duration, write_to_txt_file
 
-parser = ArgumentParser()
+parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 parser.add_argument(
     "-f",
     "--file-path",
     type=str,
     required=True,
-    help="Enter the path of the file that you want to analyse. "
-    "If the path contains a space, it must be surrounded in double quotes. "
+    help="Enter the path of the file that you want to analyse.\n"
+    "If the path contains a space, it must be surrounded in double quotes.\n"
     'Example: -f "C:/Users/H/Desktop/my file.mp4"',
 )
 parser.add_argument(
@@ -33,38 +33,45 @@ parser.add_argument(
     "--graph-type",
     choices=["filled", "unfilled"],
     default="unfilled",
-    help='Specify the type of graph that should be created. The default graph type is "unfilled". '
+    help='Specify the type of graph that should be created. The default graph type is "unfilled".\n'
     "To see the difference between a filled and unfilled graph, check out the example graph files.",
 )
 parser.add_argument(
     "-gop",
     action="store_true",
-    help="Instead of plotting the bitrate every second, plot the bitrate of each GOP. "
+    help="Instead of plotting the bitrate every second, plot the bitrate of each GOP.\n"
     "This plots GOP end time (x-axis, in seconds) against GOP bitrate (y-axis, Mbps).",
 )
 parser.add_argument(
-    "-se",
-    "--show-entries",
+    "-e",
+    "--entries",
     type=str,
     default="packet=dts_time,size",
-    help="Only applicable if --no-graph-mode is specified. "
-    "Use FFprobe's -show_entries option to specify what to output. Example: -se frame=key_frame,pkt_pts_time",
+    help=(
+        "Only applicable if --no-graph-mode is specified.\n"
+        "Use FFprobe's -show_entries option to specify what to output.\n"
+        "Only 1 entry is supported.\n"
+        "Examples:\n"
+        "-e frame=key_frame\n"
+        "-e frame=pict_type"
+    ),
 )
+
 parser.add_argument(
     "-ngm",
     "--no-graph-mode",
     action="store_true",
-    help='Enable "no graph mode" which simply writes the output of ffprobe to a .txt file. '
+    help='Enable "no graph mode" which simply writes the output of ffprobe to a .txt file.\n'
     "You should also use the --show-entries argument to specify what information you want ffprobe to output.",
 )
 parser.add_argument(
     "-s",
     "--stream-specifier",
     type=str,
-    help="Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse. "
-    "The defaults for audio and video files are a:0 and V:0, respectively. "
-    "Note that stream index starts at 0. "
-    "As an example, to target the 2nd audio stream, enter: --stream-specifier a:1",
+    help="Use FFmpeg stream specifier syntax to specify the audio/video stream that you want to analyse.\n"
+    "The defaults for audio and video files are a:0 and V:0, respectively.\n"
+    "Note that stream index starts at 0.\n"
+    "As an example, to target the 2nd audio stream: --stream-specifier a:1",
 )
 
 args = parser.parse_args()
@@ -121,7 +128,7 @@ if "V" in stream_specifier or "v" in stream_specifier:
 entries = "packet=dts_time,size"
 
 if args.no_graph_mode:
-    entries = args.show_entries
+    entries = args.entries
 elif args.gop:
     entries = "frame=key_frame,pkt_dts_time,pkt_size"
 
@@ -140,7 +147,6 @@ cmd = [
     "csv=print_section=0:nk=1",
     args.file_path,
 ]
-process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
 if args.gop:
     with Progress(
@@ -154,6 +160,8 @@ if args.gop:
             description="Processing frames...",
             total=number_of_frames,
         )
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
         gop_end_times, gop_bitrates = get_gop_bitrates(
             process, progress_bar, task_id, number_of_frames
@@ -196,7 +204,17 @@ else:
             # GOP length in terms of number of frames.
             gop_length = 0
 
-            if "key_frame" in args.show_entries:
+            if "key_frame" in args.entries:
+                # Adding "-skip_frame nokey" ensures that only keyframes are processed.
+                # https://trac.ffmpeg.org/ticket/8820#no1
+                # Notes:
+                # All keyframes are I-frames, but not all I-frames are keyframes.
+                # All IDR frames are keyframes.
+                cmd.append("-skip_frame")
+                cmd.append("nokey")
+
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
                 for line in io.TextIOWrapper(process.stdout):
                     frame_number += 1
                     gop_length += 1
@@ -204,24 +222,16 @@ else:
 
                     if line.strip() == "1":
                         write_to_txt_file(
-                            Path(output_dir).joinpath(
-                                f"{args.show_entries.split("=")[1]}.txt"
-                            ),
-                            f"Frame {frame_number} is an I-frame\n{'GOP length was ' + str(gop_length) + ' frames\n\n' if gop_length != 1 else '\n'}",
+                            Path(output_dir).joinpath(f"{args.entries}.txt"),
+                            f"Frame {frame_number} is a keyframe\n{'GOP length was ' + str(gop_length) + ' frames\n\n' if gop_length != 1 else '\n'}",
                         )
-
-                        print(
-                            "-----------------------------------------------------------------------"
-                        )
-                        print(f"Frame {frame_number} is an I-frame")
-
-                        if gop_length != 1:
-                            print(f"GOP length was {gop_length} frames")
 
                         # We have reached the next I-frame, set gop_length to 0 to calculate the next GOP length.
                         gop_length = 0
 
-            elif "pict_type" in args.show_entries:
+            elif "pict_type" in args.entries:
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
                 for line in io.TextIOWrapper(process.stdout):
                     frame_number += 1
                     gop_length += 1
@@ -231,9 +241,7 @@ else:
                     pict_type = line.strip()
 
                     write_to_txt_file(
-                        Path(output_dir).joinpath(
-                            f"{args.show_entries.split("=")[1]}.txt"
-                        ),
+                        Path(output_dir).joinpath(f"{args.entries}.txt"),
                         f"{'\n' if pict_type == 'I' and frame_number > 1 else ''}Frame {frame_number} is {'an' if pict_type == 'I' else 'a'} {pict_type}-frame\n{'GOP length was ' + str(gop_length) + ' frames\n\n' if pict_type == "I" and gop_length != 1 else ''}",
                     )
 
@@ -242,18 +250,18 @@ else:
                         gop_length = 0
 
             else:
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
                 for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
                     frame_number += 1
                     progress_bar.update(task_id, completed=frame_number)
 
                     write_to_txt_file(
-                        Path(output_dir).joinpath(
-                            f"{args.show_entries.split("=")[1]}.txt"
-                        ),
+                        Path(output_dir).joinpath(f"{args.entries}.txt"),
                         line,
                     )
 
-        print(f"Done! Check out {output_dir}/{args.show_entries.split("=")[1]}.txt")
+        print(f"Done! Check out {output_dir}/{args.entries}.txt")
 
     else:
         with Progress(
@@ -270,6 +278,8 @@ else:
                 description="Calculating bitrates...",
                 total=file_duration,
             )
+
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
             # Parse the ffprobe output save the timestamps and bitrates in the time_data and size_data lists, respectively.
             x_axis_values, bitrate_every_second = get_bitrate_every_second(

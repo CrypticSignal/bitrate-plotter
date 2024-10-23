@@ -14,9 +14,10 @@
 *.mkv
 *.mp4
 *.MTS
+*.webm
 *.wmv
 # Miscellaneous
 .DS_Store
 __pycache__
+*.png
 *.txt
-!requirements.txt

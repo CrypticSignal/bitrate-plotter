@@ -1,10 +1,15 @@
 import io
 
-from tqdm import tqdm
+from utils import write_to_txt_file
 
-from utils import clear_current_line_in_terminal, write_to_txt_file
 
-def get_bitrate_every_second(process, raw_data_filename, file_duration):
+def get_bitrate_every_second(
+    process,
+    raw_data_filename,
+    progress_bar,
+    task_id_1,
+    task_id_2,
+):
     x_axis_values = []
     bitrate_every_second = []
     megabits_this_second = 0
@@ -14,20 +19,13 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
     # Initialise a dictionary where the decoding timestamps (DTS) will be the keys and the packet sizes will be the values.
     dts_times_and_packet_sizes = {}
 
-    progress_bar = tqdm(
-        total=file_duration,
-        unit='s',
-        dynamic_ncols=True,
-    )
-
-    previous_dts_time = 0
-
     for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
         ## ffprobe will return the time in ms and the size in bytes.
-        dts_time, packet_size = line.strip().split(",")
-        packet_size = int(packet_size)
-        # Convert to megabits.
-        packet_size = (packet_size * 8) / 1000_000
+        if line.strip():
+            dts_time, packet_size = line.strip().split(",", 2)[:2]
+            packet_size = int(packet_size)
+            # Convert to megabits.
+            packet_size = (packet_size * 8) / 1000_000
 
         try:
             dts_time = float(dts_time)
@@ -35,13 +33,8 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
             pass
         else:
             dts_times_and_packet_sizes[dts_time] = packet_size
-            progress_bar.update(dts_time - previous_dts_time) 
-            previous_dts_time = dts_time
+            progress_bar.update(task_id_1, completed=dts_time)
 
-    progress_bar.close()
-
-    clear_current_line_in_terminal()  # Clears the progress and ETA.
-    print("Done!")
     # Create a new dictionary where the entries are ordered by timestamp value (ascending order).
     ordered_dict = dict(sorted(dts_times_and_packet_sizes.items()))
     print("Calculating the bitrates...")
@@ -51,10 +44,10 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
             x_axis_values.append(dts_time)
             bitrate_every_second.append(megabits_this_second)
 
-            percentage_complete = round(100.0 * (dts_time / file_duration), 1)
-            print(f'Progress: {percentage_complete}%', end='\r')
+            progress_bar.update(task_id_2, completed=dts_time)
             write_to_txt_file(
-                raw_data_filename, f"Timestamp: {dts_time} --> {round(megabits_this_second, 3)} Mbps\n"
+                raw_data_filename,
+                f"Timestamp: {dts_time} --> {round(megabits_this_second, 3)} Mbps\n",
             )
 
             megabits_this_second = packet_size
@@ -62,11 +55,10 @@ def get_bitrate_every_second(process, raw_data_filename, file_duration):
         else:
             megabits_this_second += packet_size
 
-    clear_current_line_in_terminal()
     return x_axis_values, bitrate_every_second
 
 
-def get_gop_bitrates(process, number_of_frames):
+def get_gop_bitrates(process, progress_bar, task_id, number_of_frames):
     keyframe_count = 0
     gop_size = 0
     gop_end_times = []
@@ -74,15 +66,11 @@ def get_gop_bitrates(process, number_of_frames):
 
     print(f"Processing ~{number_of_frames} frames...")
 
-    progress_bar = tqdm(
-        total=number_of_frames,
-        unit=' frames',
-        dynamic_ncols=True,
-    )
+    frame_number = 0
 
     for line in io.TextIOWrapper(process.stdout):
-        progress_bar.update(1)
-
+        frame_number += 1
+        progress_bar.update(task_id, completed=frame_number)
         key_frame, pkt_dts_time, pkt_size = line.strip().split(",")
         # Convert from bytes to megabits.
         pkt_size = (int(pkt_size) * 8) / 1000_000
@@ -112,5 +100,4 @@ def get_gop_bitrates(process, number_of_frames):
             else:
                 gop_size += pkt_size
 
-    progress_bar.close()
     return gop_end_times, gop_bitrates

@@ -6,6 +6,14 @@ import subprocess
 
 import matplotlib.pyplot as plt
 import mplcursors
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+    SpinnerColumn,
+    MofNCompleteColumn,
+)
 
 from ffprobe_output_parser import get_bitrate_every_second, get_gop_bitrates
 from utils import calc_number_of_frames, get_file_duration, write_to_txt_file
@@ -63,6 +71,9 @@ args = parser.parse_args()
 filename = Path(args.file_path).name
 filename_without_ext = Path(args.file_path).stem
 
+output_dir = f"{filename}_bitrate_analysis"
+os.makedirs(output_dir, exist_ok=True)
+
 # This command will information about file's first stream.
 cmd = [
     "ffprobe",
@@ -77,7 +88,7 @@ cmd = [
 ]
 
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-first_stream = process.stdout.read().decode("utf-8").replace("\r", "").split("\n")
+first_stream = process.stdout.read().decode("utf-8")
 
 if not args.stream_specifier:
     if "codec_type=video" in first_stream:
@@ -102,7 +113,9 @@ else:
 file_duration = get_file_duration(args.file_path, stream_specifier)
 
 if "V" in stream_specifier or "v" in stream_specifier:
-    number_of_frames = calc_number_of_frames(args.file_path, stream_specifier, file_duration)
+    number_of_frames = calc_number_of_frames(
+        args.file_path, stream_specifier, file_duration
+    )
 
 # To calculate the bitrate every second, FFprobe needs to output the following entries.
 entries = "packet=dts_time,size"
@@ -130,7 +143,21 @@ cmd = [
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
 if args.gop:
-    gop_end_times, gop_bitrates = get_gop_bitrates(process, number_of_frames)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        MofNCompleteColumn(),
+    ) as progress_bar:
+        task_id = progress_bar.add_task(
+            description="Processing frames...",
+            total=number_of_frames,
+        )
+
+        gop_end_times, gop_bitrates = get_gop_bitrates(
+            process, progress_bar, task_id, number_of_frames
+        )
 
     plt.suptitle(filename)
     plt.xlabel("GOP end time (s)")
@@ -148,67 +175,117 @@ if args.gop:
             f"{round(sel.target[0], 1)}, {round(sel.target[1], 1)}"
         ),
     )
-    print("Done! The graph will open in a new window.")
-    plt.show()
+
+    plt.savefig(Path(output_dir).joinpath("GOP bitrates graph.png"))
 
 else:
     if args.no_graph_mode:
-        ffprobe_output_path = f"{filename} (FFprobe Data)/{entries}.txt"
-        os.makedirs(f"{filename} (FFprobe Data)", exist_ok=True)
-        frame_count = 0
-        # GOP length in terms of number of frames.
-        gop_length = 0
-        print("-----------------------------------------------------------------------------------")
-        print(f"{args.show_entries} data is being written to /{ffprobe_output_path}...")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            MofNCompleteColumn(),
+        ) as progress_bar:
+            task_id = progress_bar.add_task(
+                description="Processing frames...",
+                total=number_of_frames,
+            )
 
-        if "key_frame" in args.show_entries or "pict_type" in args.show_entries:
-            for line in io.TextIOWrapper(process.stdout):
-                frame_count += 1
-                percentage_progress = round((frame_count / number_of_frames) * 100, 1)
-                print(f"Progress: {percentage_progress}%", end="\r")
-                gop_length += 1
-                if (
-                    "1" in line.strip().split(",")
-                    or "I" in line.strip().split(",")
-                    or "Iside_data" in line.strip().split(",")
-                ):
-                    print("-----------------------------------------------------------------------")
-                    print(f"Frame {frame_count} is an I-frame")
+            frame_number = 0
+            # GOP length in terms of number of frames.
+            gop_length = 0
 
-                    if gop_length != 1:
-                        print(f"GOP length was {gop_length} frames")
+            if "key_frame" in args.show_entries or "pict_type" in args.show_entries:
+                for line in io.TextIOWrapper(process.stdout):
+                    frame_number += 1
+                    gop_length += 1
 
-                    # We have reached the next keyframe, set gop_length to 0 to calculate the next GOP length.
-                    gop_length = 0
-        else:
-            for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-                write_to_txt_file(ffprobe_output_path, line)
-        print(f"Done! Check out the following path: /{ffprobe_output_path}")
+                    progress_bar.update(task_id, completed=frame_number)
+
+                    if (
+                        "1" in line.strip().split(",")
+                        or "I" in line.strip().split(",")
+                        or "Iside_data" in line.strip().split(",")
+                    ):
+                        write_to_txt_file(
+                            Path(output_dir).joinpath(
+                                f"{args.show_entries.split("=")[1]}.txt"
+                            ),
+                            f"Frame {frame_number} is an I-frame\n{'GOP length was ' + str(gop_length) + ' frames\n\n' if gop_length != 1 else '\n'}",
+                        )
+
+                        print(
+                            "-----------------------------------------------------------------------"
+                        )
+                        print(f"Frame {frame_number} is an I-frame")
+
+                        if gop_length != 1:
+                            print(f"GOP length was {gop_length} frames")
+
+                        # We have reached the next keyframe, set gop_length to 0 to calculate the next GOP length.
+                        gop_length = 0
+            else:
+                for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
+                    frame_number += 1
+                    progress_bar.update(task_id, completed=frame_number)
+
+                    write_to_txt_file(
+                        Path(output_dir).joinpath(
+                            f"{args.show_entries.split("=")[1]}.txt"
+                        ),
+                        line,
+                    )
+
+        print(f"Done! Check out {output_dir}/{args.show_entries.split("=")[1]}.txt")
 
     else:
-        timestamp_bitrate_file = f"[{filename}]/BitrateEverySecond.txt"
-        os.makedirs(f"[{filename}]", exist_ok=True)
-        with open(timestamp_bitrate_file, "w"):
-            pass
-        # Parse the ffprobe output save the timestamps and bitrates in the time_data and size_data lists, respectively.
-        x_axis_values, bitrate_every_second = get_bitrate_every_second(
-            process, timestamp_bitrate_file, file_duration
-        )
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+        ) as progress_bar:
+            task_id_1 = progress_bar.add_task(
+                description=f"Retrieving {"video" if stream_specifier == "V:0" else "audio"} stream data...",
+                total=file_duration,
+            )
+            task_id_2 = progress_bar.add_task(
+                description="Calculating bitrates...",
+                total=file_duration,
+            )
 
-        average_bitrate = round(sum(bitrate_every_second) / len(bitrate_every_second), 3)
+            # Parse the ffprobe output save the timestamps and bitrates in the time_data and size_data lists, respectively.
+            x_axis_values, bitrate_every_second = get_bitrate_every_second(
+                process,
+                Path(output_dir).joinpath("bitrates.txt"),
+                progress_bar,
+                task_id_1,
+                task_id_2,
+            )
+
+        average_bitrate = round(
+            sum(bitrate_every_second) / len(bitrate_every_second), 3
+        )
         min_bitrate = round(min(bitrate_every_second), 3)
         max_bitrate = round(max(bitrate_every_second), 3)
+
+        raw_data_file = Path(output_dir).joinpath("bitrates.txt")
+
         write_to_txt_file(
-            timestamp_bitrate_file,
+            raw_data_file,
             f"\nMin Bitrate: {min_bitrate} Mbps\nAverage Bitrate: {average_bitrate} Mbps\nMax Bitrate: {max_bitrate} Mbps",
         )
 
-        print("Creating the graph...")
-        plt.suptitle(f"{filename}\nMin: {min_bitrate} | Max: {max_bitrate} | Avg: {average_bitrate} Mbps")
+        print("Creating a graph...")
+        plt.suptitle(
+            f"{filename}\nMin: {min_bitrate} | Max: {max_bitrate} | Avg: {average_bitrate} Mbps"
+        )
         plt.xlabel("Time (s)")
         plt.ylabel("Bitrate (Mbps)")
         if args.graph_type == "filled":
             plt.fill_between(x_axis_values, bitrate_every_second)
         plt.plot(x_axis_values, bitrate_every_second)
-        print("Done! The graph will open in a new window.")
-        plt.show()
+        plt.savefig(Path(output_dir).joinpath("graph.png"))
+
+        print(f"Done! Check out the {output_dir} folder.")

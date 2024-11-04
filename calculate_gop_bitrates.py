@@ -101,21 +101,21 @@ class VideoStats:
 
         return {
             "duration": (
-                np.min(s.duration for s in self.gop_stats),
-                np.max(s.duration for s in self.gop_stats),
-                np.mean(s.duration for s in self.gop_stats),
+                np.min([s.duration for s in self.gop_stats]),
+                np.max([s.duration for s in self.gop_stats]),
+                np.mean([s.duration for s in self.gop_stats]),
             ),
             "size": (
-                np.min(s.size for s in self.gop_stats),
-                np.max(s.size for s in self.gop_stats),
-                np.mean(s.size for s in self.gop_stats),
+                np.min([s.size for s in self.gop_stats]),
+                np.max([s.size for s in self.gop_stats]),
+                np.mean([s.size for s in self.gop_stats]),
             ),
             "bitrate": (
-                np.min(s.bitrate for s in self.gop_stats),
-                np.max(s.bitrate for s in self.gop_stats),
-                np.mean(s.bitrate for s in self.gop_stats),
+                np.min([s.bitrate for s in self.gop_stats]),
+                np.max([s.bitrate for s in self.gop_stats]),
+                np.mean([s.bitrate for s in self.gop_stats]),
             ),
-            "avg_frames": np.mean(s.frame_count for s in self.gop_stats),
+            "avg_frames": np.mean([s.frame_count for s in self.gop_stats]),
         }
 
 
@@ -296,11 +296,11 @@ def calculate_gop_bitrates(
 
         if len(time_intervals) > 0:
             avg_interval = np.mean(time_intervals)
-            if avg_interval == (1 / framerate):
+            if abs(avg_interval == (1 / framerate)) < 0.000_000_001:
                 print(f"✓ Average {timing_type} interval matches expected frame rate")
             else:
                 print(
-                    f"! Average {timing_type} interval ({avg_interval:.6f}s) differs from expected ({1/framerate:.6f}s)"
+                    f"! Average {timing_type} interval ({avg_interval}s) differs from expected ({1/framerate}s)"
                 )
 
             if abs(max_interval - min_interval) < 0.001:

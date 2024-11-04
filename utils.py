@@ -50,7 +50,8 @@ class VideoInfoProvider:
             self._video_path,
         ]
         process = subprocess.run(cmd, capture_output=True)
-        return int(process.stdout.decode("utf-8"))
+
+        return int(process.stdout.decode("utf-8").replace(",", ""))
 
     def get_video_bitrate(self):
         bitrate = probe(self._video_path)["format"]["bit_rate"]

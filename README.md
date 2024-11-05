@@ -9,7 +9,7 @@ Unfilled graph example:
 
 Filled graph example:
 
-![Filled graph example](<https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png>)
+![Filled graph example](<https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(filled).png>)
 
 
 **[2]** Information about every Group of Pictures (GOP). You must use the `-gop` argument if this is what you are looking for. Only applicable if analysing a video file. Here's an example of the output:

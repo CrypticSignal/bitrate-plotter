@@ -18,6 +18,11 @@ from rich.progress import (
     MofNCompleteColumn,
 )
 
+framerate = None
+is_constant_framerate = None
+is_integer_framerate = None
+number_of_frames = None
+
 filename = Path(args.file_path).name
 output_dir = f"[{filename}]"
 os.makedirs(output_dir, exist_ok=True)
@@ -30,29 +35,18 @@ if args.gop:
 line()
 
 file_info = FileInfoProvider(args.file_path)
-first_stream = file_info.first_stream_info()
+is_video = file_info.is_video()
 
 if not args.stream_specifier:
-    if "codec_type=video" in first_stream:
+    if is_video:
         print("Video file detected. The first video stream will be analysed.")
         stream_specifier = "V:0"
         video_info = VideoInfoProvider(args.file_path)
-        is_video = True
-    elif "codec_type=subtitle" in first_stream:
-        print(
-            "It seems like you have specified a video file. The first video stream will be analysed.\n"
-            "If this is not what you want, re-run this program using the -s argument "
-            "to manually specify the stream to analyse."
-        )
-        stream_specifier = "V:0"
-        video_info = VideoInfoProvider(args.file_path)
-        is_video = True
     else:
         stream_specifier = "a:0"
         print(
             "It seems like you have specified an audio file. The first audio stream will be analysed."
         )
-        is_video = False
 else:
     stream_specifier = args.stream_specifier
 
@@ -94,7 +88,7 @@ if is_video:
         is_integer_framerate = video_info.is_integer_framerate()
         print(f"Framerate: {framerate} FPS")
 
-    line()
+line()
 
 if args.gop:
     data_file = Path(output_dir).joinpath("gop_statistics.txt")
@@ -132,39 +126,35 @@ if args.gop:
             args.dts,
         )
 
-    plt.suptitle(filename)
+    plt.figure(figsize=(15, 8))
+    plt.suptitle(f"{filename} - Full Video")
     plt.xlabel("GOP end time (s)")
     plt.ylabel("GOP bitrate (Mbps)")
 
     if args.graph_type == "filled":
-        plt.fill_between(gop_end_times, gop_bitrates)
+        plt.fill_between(gop_end_times, gop_bitrates, step="post", alpha=0.3)
 
-    plt.stem(gop_end_times, gop_bitrates)
+    plt.step(gop_end_times, gop_bitrates, where="post", linestyle="-", linewidth=2)
+    plt.scatter(gop_end_times, gop_bitrates, marker=".", color="red", s=20, alpha=0.5)
+    plt.grid(True, alpha=0.3)
+    plt.ylim(bottom=0)
     plt.savefig(Path(output_dir).joinpath("GOP_bitrates_graph.png"))
+    plt.close()
 
 else:
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-    ) as progress_bar:
-        task_id = progress_bar.add_task(
-            description="Calculating bitrates...",
-            total=number_of_frames if is_video else file_duration,
-        )
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-        x_axis_values, bitrate_every_second = calculate_bitrates(
-            process,
-            progress_bar,
-            task_id,
-            number_of_frames,
-            framerate,
-            is_constant_framerate,
-            is_integer_framerate,
-            args.dts,
-        )
+    print("Processing file...")
+
+    x_axis_values, bitrate_every_second = calculate_bitrates(
+        process,
+        is_video,
+        number_of_frames,
+        framerate,
+        is_constant_framerate,
+        is_integer_framerate,
+        args.dts,
+    )
 
     average_bitrate = round(sum(bitrate_every_second) / len(bitrate_every_second), 3)
     min_bitrate = round(min(bitrate_every_second), 3)
@@ -174,10 +164,10 @@ else:
 
     print("Creating a graph...")
     plt.suptitle(
-        f"{filename}\nMin: {min_bitrate} | Max: {max_bitrate} | Avg: {average_bitrate} Mbps"
+        f"{filename}\nMin: {min_bitrate} | Max: {max_bitrate} | Avg: {average_bitrate} {"Mbps" if is_video else "Kbps"}"
     )
     plt.xlabel("Time (s)")
-    plt.ylabel("Bitrate (Mbps)")
+    plt.ylabel(f"Bitrate ({"Mbps" if is_video else "Kbps"})")
     if args.graph_type == "filled":
         plt.fill_between(x_axis_values, bitrate_every_second)
     plt.plot(x_axis_values, bitrate_every_second)

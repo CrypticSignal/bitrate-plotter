@@ -1,25 +1,44 @@
 # Bitrate Plotter
-A command line program that plots one of the following graphs:
+A command line program that outputs one of the following:
 
 **[1]** A graph showing the bitrate every second. The graph can be "filled" or "unfilled".
 
-**[2]** A graph showing bitrate of every Group of Pictures (GOP). You must use the `-gop` argument if this is what you are looking for. Only applicable if analysing a video file.
+Unfilled graph example:
 
-You can find an example of each graph type below:
+![Unfilled graph example](<https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png>)
 
-**Graph type [1] (unfilled):**
-![Graph type [1] (unfilled)](<https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png>)
+Filled graph example:
 
-_Image 1: a graph showing the bitrate every second. To see an example of a filled graph, check out the "Example Graphs" folder._
+![Filled graph example](<https://github.com/CrypticSignal/bitrate-variation-plotter/blob/main/Example%20Graphs/Bitrate%20every%20second%20(unfilled).png>)
 
-**Graph type [2]:**
 
-![Graph type [2]](https://github.com/CrypticSignal/bitrate-plotter/blob/main/Example%20Graphs/Closed%20GOP%20bitrates.png)
+**[2]** Information about every Group of Pictures (GOP). You must use the `-gop` argument if this is what you are looking for. Only applicable if analysing a video file. Here's an example of the output:
+```
+Detected the following info about BigBuckBunny.mp4:
+----------------------------------------------------
+Duration: 596.474195s
+Number of Frames: 14315
+Framerate: 24.0 FPS
+----------------------------------------------------
+GOP Statistics:
 
-_Image 2: a graph showing the bitrate of every GOP. The distances between the lines show the length (in seconds) of each GOP._
+GOP count: 266
+Average number of packets per GOP: 53.8
+GOP duration range: 0.500s to 2.500s
+Average GOP duration: 2.242s
+GOP size range: 0.54 to 9.09 Megabits
+GOP bitrate range: 0.51 to 4.07 Mbps
+Average GOP bitrate: 2.00 Mbps
+
+✓ Average PTS interval matches expected frame rate
+✓ PTS intervals are consistent
+[Info] GOP durations are inconsistent:
+Min GOP Duration: 0.5000006666665892
+Max GOP Duration: 2.5000006666667027
+```
 
 # Requirements
-- Python 3.6+
+- Python 3.7+
 - FFprobe executable in your PATH.
 - `pip install -r requirements.txt`
 
@@ -36,9 +55,8 @@ options:
                         Example: -f "C:/Users/H/Desktop/my file.mp4"
   -dts                  Use DTS instead of PTS when calculating bitrates.
                         Only applicable if analysing a video file.
-  -gop                  Instead of plotting the bitrate of every second, plot the bitrate of every GOP.
+  -gop                  Output information about every Group Of Pictures (GOP).
                         Only applicable if analysing a video file.
-                        This plots GOP end time (x-axis, in seconds) against GOP bitrate (y-axis, Mbps).
   -g, --graph-type {filled,unfilled}
                         Specify the type of graph that should be created. The default graph type is "unfilled".
                         To see the difference between a filled and unfilled graph, check out the example graph files.

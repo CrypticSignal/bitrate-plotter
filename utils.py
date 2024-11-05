@@ -8,7 +8,7 @@ class FileInfoProvider:
     def __init__(self, file_path):
         self._file_path = file_path
 
-    def first_stream_info(self):
+    def is_video(self):
         # This command will information about file's first stream.
         cmd = [
             "ffprobe",
@@ -18,7 +18,7 @@ class FileInfoProvider:
             str(os.cpu_count()),
             "-show_streams",
             "-select_streams",
-            "0",
+            "V",
             self._file_path,
         ]
 
@@ -110,6 +110,14 @@ def process_timestamp_and_size(parts):
         return timestamp, packet_size
     except (ValueError, IndexError, OverflowError):
         return None
+
+
+def convert_to_kbits(bytes_size):
+    """Convert bytes to megabits."""
+    try:
+        return (bytes_size * 8) / 1000
+    except OverflowError:
+        raise ValueError(f"Packet size too large to process: {bytes_size}")
 
 
 def convert_to_mbits(bytes_size):

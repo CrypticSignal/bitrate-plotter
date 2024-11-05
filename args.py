@@ -21,9 +21,7 @@ parser.add_argument(
 parser.add_argument(
     "-gop",
     action="store_true",
-    help="Instead of plotting the bitrate of every second, plot the bitrate of every GOP.\n"
-    "Only applicable if analysing a video file.\n"
-    "This plots GOP end time (x-axis, in seconds) against GOP bitrate (y-axis, Mbps).",
+    help="Output information about every Group Of Pictures (GOP).\nOnly applicable if analysing a video file.",
 )
 
 parser.add_argument(

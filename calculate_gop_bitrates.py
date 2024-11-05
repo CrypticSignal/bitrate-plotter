@@ -126,7 +126,6 @@ def calculate_gop_bitrates(
     task_1: str,
     task_2: str,
     framerate,
-    number_of_packets: int,
     data_file: str,
     use_dts: bool = False,
 ) -> Tuple[List[float], List[float]]:

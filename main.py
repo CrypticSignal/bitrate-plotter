@@ -121,7 +121,6 @@ if args.gop:
             task_1,
             task_2,
             framerate,
-            number_of_frames,
             data_file,
             args.dts,
         )

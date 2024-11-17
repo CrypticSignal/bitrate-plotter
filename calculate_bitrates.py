@@ -101,8 +101,8 @@ def calculate_bitrates(
         else:
             timestamp_bounds_per_second[second]["max"] = packet.timestamp
 
-    # Round up to the next integer
     duration = int(max_timestamp) - int(min_timestamp)
+    # Round up to the next integer
     if max_timestamp > int(max_timestamp):
         duration += 1
 

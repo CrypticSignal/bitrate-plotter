@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -9,14 +10,6 @@ from calculate_gop_bitrates import calculate_gop_bitrates
 from utils import FileInfoProvider, VideoInfoProvider, line
 
 import matplotlib.pyplot as plt
-from rich.progress import (
-    Progress,
-    TextColumn,
-    BarColumn,
-    TaskProgressColumn,
-    SpinnerColumn,
-    MofNCompleteColumn,
-)
 
 framerate = None
 is_constant_framerate = None
@@ -24,7 +17,11 @@ is_integer_framerate = None
 number_of_frames = None
 
 filename = Path(args.file_path).name
-output_dir = f"[{filename}]"
+
+output_dir = Path(f"[{filename}]")
+if args.gop:
+    output_dir = output_dir.joinpath("gop")
+
 os.makedirs(output_dir, exist_ok=True)
 
 entries = f"packet={"dts_time" if args.dts else "pts_time"},size"
@@ -96,34 +93,14 @@ if args.gop:
     with open(data_file, "w") as f:
         pass
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        MofNCompleteColumn(),
-    ) as progress_bar:
-        task_1 = progress_bar.add_task(
-            description="Collecting frames...",
-            total=number_of_frames,
-        )
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-        task_2 = progress_bar.add_task(
-            description="Processing frames...",
-            total=number_of_frames,
-        )
-
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-
-        gop_end_times, gop_bitrates = calculate_gop_bitrates(
-            process,
-            progress_bar,
-            task_1,
-            task_2,
-            framerate,
-            data_file,
-            args.dts,
-        )
+    gop_end_times, gop_bitrates, data = calculate_gop_bitrates(
+        process,
+        framerate,
+        data_file,
+        args.dts,
+    )
 
     plt.figure(figsize=(15, 8))
     plt.suptitle(f"{filename} - Full Video")
@@ -145,14 +122,8 @@ else:
 
     print("Processing file...")
 
-    x_axis_values, bitrate_every_second = calculate_bitrates(
-        process,
-        is_video,
-        number_of_frames,
-        framerate,
-        is_constant_framerate,
-        is_integer_framerate,
-        args.dts,
+    x_axis_values, bitrate_every_second, data = calculate_bitrates(
+        process, args.dts, output_unit="mbps"
     )
 
     average_bitrate = round(sum(bitrate_every_second) / len(bitrate_every_second), 3)
@@ -172,4 +143,7 @@ else:
     plt.plot(x_axis_values, bitrate_every_second)
     plt.savefig(Path(output_dir).joinpath("bitrates_graph.png"))
 
-    print(f"Done! Check out the '{output_dir}' folder.")
+with open(output_dir.joinpath("data.json"), "w") as f:
+    json.dump(data, f, indent=4)
+
+print(f"Done! Check out the '{output_dir}' folder.")

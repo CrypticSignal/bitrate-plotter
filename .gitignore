@@ -13,6 +13,7 @@
 *.flv
 *.m4v
 *.mkv
+*.mov
 *.mp4
 *.MTS
 *.webm
@@ -20,5 +21,6 @@
 # Miscellaneous
 .DS_Store
 __pycache__
+*.json
 *.png
 *.txt

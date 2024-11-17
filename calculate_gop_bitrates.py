@@ -1,6 +1,6 @@
 from dataclasses import dataclass
+import json
 import io
-from textwrap import dedent
 from typing import List, Tuple, TextIO, NamedTuple
 
 from utils import append_to_file
@@ -122,43 +122,16 @@ class VideoStats:
 
 def calculate_gop_bitrates(
     process: TextIO,
-    progress_bar: any,
-    task_1: str,
-    task_2: str,
     framerate,
     data_file: str,
-    use_dts: bool = False,
+    use_dts: bool,
 ) -> Tuple[List[float], List[float]]:
-    """
-    Calculate bitrates for each Group of Pictures (GOP) in a video stream.
-
-    Args:
-        process: Subprocess stdout containing frame data in CSV format (time,size,flags)
-        progress_bar: Progress bar object for updating progress
-        task_1: Task identifier for packet collection progress
-        task_2: Task identifier for GOP analysis progress
-        framerate: Video framerate in packets per second
-        number_of_packets: Total number of packets expected
-        data_file: Path to file for writing statistics
-        use_dts: If True, use DTS for calculations. If False, use PTS (default)
-
-    Returns:
-        gop_end_times: List of GOP end times in seconds
-        gop_bitrates: List of GOP bitrates in Mbps
-
-    Raises:
-        RuntimeError: If no valid packets are found or other processing errors occur
-        ValueError: If GOP duration is invalid
-    """
-
     def collect_packets() -> List[Packet]:
-        """Collect and parse all packets from the input."""
         packets = []
         total_packets = 0
 
         for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
             total_packets += 1
-            progress_bar.update(task_1, completed=total_packets)
 
             try:
                 parts = line.strip().split(",")
@@ -175,7 +148,7 @@ def calculate_gop_bitrates(
             except (ValueError, IndexError) as e:
                 append_to_file(
                     data_file,
-                    f"Warning: Error processing frame {total_packets}: {str(e)}",
+                    f"Warning: Error processing packet {total_packets}: {str(e)}",
                 )
 
         if not packets:
@@ -189,16 +162,14 @@ def calculate_gop_bitrates(
         current_gop_packets = []
         first_keyframe_found = False
 
-        for packet_number, frame in enumerate(packets, start=1):
-            progress_bar.update(task_2, completed=packet_number)
-
-            if frame.is_keyframe:
+        for packet in packets:
+            if packet.is_keyframe:
                 if first_keyframe_found and current_gop_packets:
                     gops.append(GOP(current_gop_packets[0].time, current_gop_packets))
                 first_keyframe_found = True
-                current_gop_packets = [frame]
+                current_gop_packets = [packet]
             elif first_keyframe_found:
-                current_gop_packets.append(frame)
+                current_gop_packets.append(packet)
 
         # Add final GOP
         if first_keyframe_found and current_gop_packets:
@@ -207,7 +178,6 @@ def calculate_gop_bitrates(
         return gops
 
     def write_gop_stats(gop_index: int, gop: GOP, stats: GOPStats):
-        """Write statistics for a single GOP"""
         prefix = "Final GOP" if gop_index == len(gops) else "GOP"
         append_to_file(data_file, f"{prefix} {gop_index} statistics:")
         append_to_file(data_file, f"\nStart {timing_type}: {gop.start_time:.3f}s")
@@ -241,30 +211,6 @@ def calculate_gop_bitrates(
         for i, (gop, stats) in enumerate(zip(gops, video_stats.gop_stats), 1):
             write_gop_stats(i, gop, stats)
 
-        # Write summary statistics
-        append_to_file(data_file, "Timestamp Statistics:")
-        append_to_file(
-            data_file,
-            f"\nVideo time range: {video_stats.first_time:.3f}s to {video_stats.final_time:.3f}s",
-        )
-
-        gop_stats_text = dedent(
-            f"""
-            GOP Statistics:
-            
-            GOP count: {len(gops)}
-            Average number of packets per GOP: {gop_stats_range['avg_packets']:.1f}
-            GOP duration range: {gop_stats_range['duration'][0]:.3f}s to {gop_stats_range['duration'][1]:.3f}s
-            Average GOP duration: {gop_stats_range['duration'][2]:.3f}s
-            GOP size range: {gop_stats_range['size'][0]:.2f} to {gop_stats_range['size'][1]:.2f} Megabits
-            GOP bitrate range: {gop_stats_range['bitrate'][0]:.2f} to {gop_stats_range['bitrate'][1]:.2f} Mbps
-            Average GOP bitrate: {gop_stats_range['bitrate'][2]:.2f} Mbps
-            """
-        )
-
-        print(gop_stats_text)
-        append_to_file(data_file, gop_stats_text)
-
         # Packet statistics
         append_to_file(data_file, "\n\nPacket Statistics:")
         append_to_file(
@@ -272,48 +218,67 @@ def calculate_gop_bitrates(
             f"\Packet size range: {min_packet_size:.6f} to {max_packet_size:.6f} Megabits",
         )
 
+        data = {
+            "mode": timing_type,
+            f"{timing_type}_range": f"{video_stats.first_time:.3f}s to {video_stats.final_time:.3f}s",
+            "gop_count": f"{len(gops)}",
+            "mean_packets_per_gop": f"{gop_stats_range['avg_packets']:.1f}",
+            "gop_duration_range_seconds": {
+                "min": f"{gop_stats_range['duration'][0]:.3f}",
+                "max": f"{gop_stats_range['duration'][1]:.3f}",
+                "mean": f"{gop_stats_range['duration'][2]:.3f}",
+            },
+            "gop_size_range_megabits": {
+                "min": f"{gop_stats_range['size'][0]:.2f}",
+                "max": f"{gop_stats_range['size'][1]:.2f}",
+            },
+            "gop_bitrate_range_mbps": {
+                "min": f"{gop_stats_range['bitrate'][0]:.2f}",
+                "max": f"{gop_stats_range['bitrate'][1]:.2f}",
+                "mean": f"{gop_stats_range['bitrate'][2]:.2f}",
+            },
+            "packet_size_range": f"{min_packet_size:.6f} to {max_packet_size:.6f} Megabits",
+        }
+
         if time_intervals:
             min_interval = np.min(time_intervals)
             max_interval = np.max(time_intervals)
-            avg_interval = np.mean(time_intervals)
+            mean_interval = np.mean(time_intervals)
 
-            append_to_file(
-                data_file,
-                f"\n{timing_type} interval range (non-zero): {min_interval:.6f}s to {max_interval:.6f}s",
+            data[f"{timing_type}_interval_range"] = (
+                f"{min_interval:.6f}s to {max_interval:.6f}s"
             )
-            append_to_file(
-                data_file,
-                f"\nAverage {timing_type} interval (non-zero): {avg_interval:.6f}s",
-            )
+
+            data[f"average_{timing_type}_interval"] = f"{mean_interval:.6f}s"
 
         if len(time_intervals) > 0:
-            avg_interval = np.mean(time_intervals)
-            if abs(avg_interval == (1 / framerate)) < 0.000_000_001:
+            mean_interval = np.mean(time_intervals)
+            if abs(mean_interval == (1 / framerate)) < 0.000_000_001:
                 print(f"✓ Average {timing_type} interval matches expected frame rate")
             else:
                 print(
-                    f"! Average {timing_type} interval ({avg_interval}s) differs from expected ({1/framerate}s)"
+                    f"! Average {timing_type} interval ({mean_interval}s) differs from expected ({1/framerate}s)"
                 )
 
             if abs(max_interval - min_interval) < 0.001:
                 print(f"✓ {timing_type} intervals are consistent")
             else:
                 print(
-                    f"! {timing_type} intervals are inconsistent. Min interval: {min_interval} | Max interval: {max_interval}"
+                    f"! {timing_type} intervals are inconsistent:\nRange: {abs(max_interval - min_interval)}\nMin: {min_interval}\nMean: {mean_interval}\nMax: {max_interval}"
                 )
 
-        min_duration, max_duration = gop_stats_range["duration"][:2]
+        min_duration, max_duration, mean_duration = gop_stats_range["duration"][:3]
         if max_duration == min_duration:
             print("✓ GOP durations are consistent")
         else:
             print(
-                f"[Info] GOP durations are inconsistent:\nMin GOP Duration: {min_duration}\nMax GOP Duration: {max_duration}"
+                f"[Info] GOP durations are inconsistent:\nMin: {min_duration}\nMean: {mean_duration}\nMax: {max_duration}"
             )
 
         gop_end_times = [gop.end_time for gop in gops]
         gop_bitrates = [stats.bitrate for stats in video_stats.gop_stats]
 
-        return gop_end_times, gop_bitrates
+        return gop_end_times, gop_bitrates, data
 
     except Exception as e:
         raise RuntimeError(f"Error processing video data: {str(e)}")

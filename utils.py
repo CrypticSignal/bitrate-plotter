@@ -97,16 +97,11 @@ def append_to_file(filename, data):
 
 
 def process_timestamp_and_size(parts):
-    """Helper function to process and validate timestamp and size."""
     if len(parts) < 2:
         return None
     try:
         timestamp = float(parts[0])
         packet_size = int(parts[1])
-        if packet_size < 0:  # Allow negative timestamps
-            return None
-        if abs(timestamp) > 1e6:  # Arbitrary large value check
-            return None
         return timestamp, packet_size
     except (ValueError, IndexError, OverflowError):
         return None
@@ -135,15 +130,17 @@ def get_second(
     timestamp,
     frame_number,
     framerate,
-    initial_timestamp,
+    prev_timestamp,
 ):
     """Calculate the current second based on timing mode."""
     try:
-        if use_dts and is_constant_framerate and is_integer_framerate:
+        if is_constant_framerate and is_integer_framerate:
             # Subtract 1 from frame_number to get correct second
             return (frame_number - 1) // int(framerate)
-        return int(timestamp - initial_timestamp)
+        # print(f"timestamp: {timestamp}")
+        # print(f"initial: {initial_timestamp}")
+        return int(timestamp - prev_timestamp)
     except (OverflowError, ValueError):
         raise ValueError(
-            f"Invalid timestamp calculation: {timestamp} - {initial_timestamp}"
+            f"Invalid timestamp calculation: {timestamp} - {prev_timestamp}"
         )

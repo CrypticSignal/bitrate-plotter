@@ -29,6 +29,9 @@ def validate_parameters(
 
 def calculate_bitrates(
     process: subprocess.Popen,
+    progress_bar,
+    task_1,
+    task_2,
     use_dts: bool,
     output_unit: str,
     min_coverage_seconds: float = 0.9,
@@ -55,6 +58,7 @@ def calculate_bitrates(
     }
 
     packets: List[Packet] = []
+    packets_processed = 0
     rejection_reasons: Dict[str, int] = {}
     total_bytes = 0
 
@@ -73,6 +77,8 @@ def calculate_bitrates(
         timestamp, packet_size = result
         total_bytes += packet_size
         packets.append(Packet(timestamp, packet_size))
+        packets_processed += 1
+        progress_bar.update(task_1, completed=packets_processed)
 
     if not packets:
         reasons = ", ".join(f"{k}: {v}" for k, v in rejection_reasons.items())
@@ -88,6 +94,8 @@ def calculate_bitrates(
     packets_per_second = {}
     timestamp_bounds_per_second = {}
 
+    packets_processed = 0
+
     for packet in packets:
         second = int(packet.timestamp)
         bytes_per_second[second] = bytes_per_second.get(second, 0) + packet.size
@@ -100,6 +108,9 @@ def calculate_bitrates(
             }
         else:
             timestamp_bounds_per_second[second]["max"] = packet.timestamp
+
+        packets_processed += 1
+        progress_bar.update(task_2, completed=packets_processed)
 
     duration = int(max_timestamp) - int(min_timestamp)
     # Round up to the next integer
@@ -184,8 +195,8 @@ def calculate_bitrates(
 
     if num_incomplete_seconds > 0:
         print(
-            f"Found {num_incomplete_seconds} incomplete seconds that will be excluded from calculations. "
-            f"Used {num_complete_seconds} complete seconds for bitrate calculations."
+            f"Found {num_incomplete_seconds} incomplete seconds that will be excluded from bitrates calculations. "
+            f"Using {num_complete_seconds} complete seconds for bitrate calculations."
         )
 
         packets_excluded: List[Packet] = []

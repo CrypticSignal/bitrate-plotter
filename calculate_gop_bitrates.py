@@ -79,7 +79,7 @@ class VideoStats:
         return self.packets[-1].time if self.packets else 0
 
     @property
-    def total_packets(self) -> int:
+    def packets_processed(self) -> int:
         return len(self.packets)
 
     def calculate_time_intervals(self) -> List[float]:
@@ -122,17 +122,18 @@ class VideoStats:
 
 def calculate_gop_bitrates(
     process: TextIO,
+    progress_bar,
+    task_1,
+    task_2,
     framerate,
     data_file: str,
     use_dts: bool,
 ) -> Tuple[List[float], List[float]]:
     def collect_packets() -> List[Packet]:
         packets = []
-        total_packets = 0
+        packets_processed = 0
 
         for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-            total_packets += 1
-
             try:
                 parts = line.strip().split(",")
                 if len(parts) != 3:
@@ -148,8 +149,11 @@ def calculate_gop_bitrates(
             except (ValueError, IndexError) as e:
                 append_to_file(
                     data_file,
-                    f"Warning: Error processing packet {total_packets}: {str(e)}",
+                    f"Warning: Error processing packet {packets_processed}: {str(e)}",
                 )
+
+            packets_processed += 1
+            progress_bar.update(task_1, completed=packets_processed)
 
         if not packets:
             raise RuntimeError("No valid packets found in input")
@@ -161,6 +165,7 @@ def calculate_gop_bitrates(
         gops = []
         current_gop_packets = []
         first_keyframe_found = False
+        packets_processed = 0
 
         for packet in packets:
             if packet.is_keyframe:
@@ -170,6 +175,9 @@ def calculate_gop_bitrates(
                 current_gop_packets = [packet]
             elif first_keyframe_found:
                 current_gop_packets.append(packet)
+
+            packets_processed += 1
+            progress_bar.update(task_2, completed=packets_processed)
 
         # Add final GOP
         if first_keyframe_found and current_gop_packets:

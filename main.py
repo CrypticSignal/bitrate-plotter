@@ -10,11 +10,17 @@ from calculate_gop_bitrates import calculate_gop_bitrates
 from utils import FileInfoProvider, VideoInfoProvider, line
 
 import matplotlib.pyplot as plt
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+)
 
 framerate = None
 is_constant_framerate = None
 is_integer_framerate = None
-number_of_frames = None
 
 filename = Path(args.file_path).name
 
@@ -47,6 +53,8 @@ if not args.stream_specifier:
 else:
     stream_specifier = args.stream_specifier
 
+number_of_packets = file_info.get_number_of_packets(stream_specifier)
+
 # The FFprobe command that will output the timestamps and packet sizes in CSV format.
 cmd = [
     "ffprobe",
@@ -68,11 +76,9 @@ file_duration = file_info.get_duration()
 print(f"Detected the following info about {args.file_path}:")
 line()
 print(f"Duration: {file_duration}s")
+print(f"Number of Packets: {number_of_packets}")
 
 if is_video:
-    number_of_frames = video_info.get_number_of_frames()
-    print(f"Number of Frames: {number_of_frames}")
-
     is_constant_framerate = video_info.is_constant_framerate()
 
     if not is_constant_framerate:
@@ -93,14 +99,32 @@ if args.gop:
     with open(data_file, "w") as f:
         pass
 
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress_bar:
+        task_1 = progress_bar.add_task(
+            description="Retrieving packet data...",
+            total=number_of_packets,
+        )
+        task_2 = progress_bar.add_task(
+            description="Retrieving GOPs...",
+            total=number_of_packets,
+        )
 
-    gop_end_times, gop_bitrates, data = calculate_gop_bitrates(
-        process,
-        framerate,
-        data_file,
-        args.dts,
-    )
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+        gop_end_times, gop_bitrates, data = calculate_gop_bitrates(
+            process,
+            progress_bar,
+            task_1,
+            task_2,
+            framerate,
+            data_file,
+            args.dts,
+        )
 
     plt.figure(figsize=(15, 8))
     plt.suptitle(f"{filename} - Full Video")
@@ -120,11 +144,29 @@ if args.gop:
 else:
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-    print("Processing file...")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress_bar:
+        task_1 = progress_bar.add_task(
+            description="Retrieving packet data...",
+            total=number_of_packets,
+        )
+        task_2 = progress_bar.add_task(
+            description="Summing packet sizes...",
+            total=number_of_packets,
+        )
 
-    x_axis_values, bitrate_every_second, data = calculate_bitrates(
-        process, args.dts, output_unit="mbps"
-    )
+        x_axis_values, bitrate_every_second, data = calculate_bitrates(
+            process,
+            progress_bar,
+            task_1,
+            task_2,
+            args.dts,
+            output_unit="mbps" if is_video else "kbps",
+        )
 
     average_bitrate = round(sum(bitrate_every_second) / len(bitrate_every_second), 3)
     min_bitrate = round(min(bitrate_every_second), 3)

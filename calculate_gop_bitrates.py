@@ -136,7 +136,7 @@ def calculate_gop_bitrates(
     def read_packets():
         records, rejected = collect_packets(process, progress_bar, task_1, use_dts, framerate)
         packets = [Packet(p.time, p.size * 8 / 1_000_000, 'K' if p.keyframe else '', p.duration) for p in records]
-        return packets, rejected
+        return packets, rejected, sum(p.fallback for p in records)
 
     def process_gops(packets: List[Packet]) -> List[GOP]:
         """Process packets into GOPs."""
@@ -180,7 +180,7 @@ def calculate_gop_bitrates(
 
     try:
         # Collect and process packets
-        packets, rejected = read_packets()
+        packets, rejected, fallbacks = read_packets()
         gops = process_gops(packets)
 
         if not gops:
@@ -206,6 +206,7 @@ def calculate_gop_bitrates(
         data = {
             "mode": timing_type,
             "rejected_packets": rejected,
+            "timestamp_fallback_packets": fallbacks,
             "gops": [dict(start_time=gop.start_time, end_time=gop.start_time + stats.duration,
                           duration=stats.duration, size_megabits=stats.size,
                           bitrate_mbps=stats.bitrate, packet_count=stats.packet_count)

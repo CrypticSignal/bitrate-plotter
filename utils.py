@@ -22,15 +22,21 @@ class PacketRecord:
     size: int  # bytes
     duration: float
     keyframe: bool
+    fallback: bool = False  # timestamp came from the other basis (PTS/DTS)
 
 
-def parse_packet(line, use_dts=False, framerate=0):
+def parse_packet(line, use_dts=True, framerate=0):
     """Read keyed FFprobe compact output; tolerate legacy timestamp,size[,flags] CSV."""
+    fallback = False
     if '=' in line:
         row = dict(part.split('=', 1) for part in line.strip().split('|') if '=' in part)
         if 'size' not in row:
             return None  # e.g. a separate side-data line
-        timestamp, size = row.get('dts_time' if use_dts else 'pts_time'), row['size']
+        preferred, other = ('dts_time', 'pts_time') if use_dts else ('pts_time', 'dts_time')
+        timestamp, size = row.get(preferred), row['size']
+        if timestamp in (None, 'N/A') and row.get(other) not in (None, 'N/A'):
+            # e.g. Matroska lacks DTS on leading packets and AVI lacks PTS entirely.
+            timestamp, fallback = row[other], True
         duration, flags = row.get('duration_time', '0'), row.get('flags', '')
     else:
         parts = next(csv.reader([line.strip()]))
@@ -51,10 +57,10 @@ def parse_packet(line, use_dts=False, framerate=0):
     if not math.isfinite(duration) or duration <= 0:
         fps = frame_rate(framerate)
         duration = 1 / fps if fps else 0
-    return PacketRecord(timestamp, size, duration, 'K' in flags)
+    return PacketRecord(timestamp, size, duration, 'K' in flags, fallback)
 
 
-def collect_packets(process, progress_bar, task, use_dts=False, framerate=0):
+def collect_packets(process, progress_bar, task, use_dts=True, framerate=0):
     if process is None or process.stdout is None:
         raise ValueError('Invalid process object provided')
     packets, rejected = [], 0

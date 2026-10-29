@@ -29,9 +29,10 @@ def main():
     if is_video:
         print('Average frame rate: {} fps (duration fallback only)'.format(fps or 'unknown'))
     line()
-    timestamp = 'dts_time' if args.dts else 'pts_time'
+    use_dts = not args.pts
+    # Request both timestamps so packets missing the selected one can fall back to the other.
     command = ['ffprobe', '-v', 'error', '-select_streams', str(selected['index']),
-               '-show_entries', 'packet={},duration_time,size,flags'.format(timestamp),
+               '-show_entries', 'packet=pts_time,dts_time,duration_time,size,flags',
                '-of', 'compact=p=0:nk=0', args.file_path]
     # Inherit stderr so a probe failure cannot be mistaken for partial success.
     with subprocess.Popen(command, stdout=subprocess.PIPE) as process:
@@ -41,9 +42,9 @@ def main():
             if args.gop:
                 data_file = output_dir / 'gop_statistics.txt'
                 data_file.write_text('')
-                ends, rates, data = calculate_gop_bitrates(process, progress, task_1, task_2, fps, data_file, args.dts)
+                ends, rates, data = calculate_gop_bitrates(process, progress, task_1, task_2, fps, data_file, use_dts)
             else:
-                times, rates, data = calculate_bitrates(process, progress, task_1, task_2, args.dts,
+                times, rates, data = calculate_bitrates(process, progress, task_1, task_2, use_dts,
                                                       'mbps' if is_video else 'kbps', framerate=fps,
                                                       include_partial=args.include_partial)
     data['stream'] = {'index': selected['index'], 'type': selected['codec_type'], 'codec': selected.get('codec_name')}

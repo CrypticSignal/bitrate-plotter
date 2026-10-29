@@ -12,10 +12,20 @@ parser.add_argument(
     'Example: -f "C:/Users/H/Desktop/my file.mp4"',
 )
 
-parser.add_argument(
+timestamps = parser.add_mutually_exclusive_group()
+
+timestamps.add_argument(
+    "-pts",
+    action="store_true",
+    help="Use PTS (presentation order) instead of DTS when calculating bitrates.\n"
+    "DTS is the default because it follows transmission/decode order, which reflects streaming bandwidth.\n"
+    "Supported for audio and video streams.",
+)
+
+timestamps.add_argument(
     "-dts",
     action="store_true",
-    help="Use DTS instead of PTS when calculating bitrates.\nSupported for audio and video streams.",
+    help="Use DTS when calculating bitrates (the default; kept for compatibility).",
 )
 
 parser.add_argument(

@@ -87,6 +87,18 @@ class SecondsTests(unittest.TestCase):
         self.assertEqual(frame_rate('0/0'), 0)
         self.assertEqual(parse_packet('side_data_type=Skip Samples'), None)
 
+    def test_missing_timestamp_falls_back_to_other_basis(self):
+        both = 'pts_time={}|dts_time={}|duration_time=1|size=125000|flags=K__'
+        _, rates, data = seconds([both.format(0, 'N/A'), both.format(1, 1)], use_dts=True)
+        self.assertEqual(rates, [1, 1])
+        self.assertEqual(data['timestamp_fallback_packets'], 1)
+        self.assertEqual(data['rejected_packets'], 0)
+        self.assertTrue(parse_packet(both.format('N/A', 2), use_dts=False).fallback)
+        self.assertFalse(parse_packet(both.format(5, 2)).fallback)
+        self.assertEqual(parse_packet(both.format(5, 2)).time, 2)
+        with self.assertRaises(ValueError):
+            parse_packet(both.format('N/A', 'N/A'))
+
     def test_probe_failure_never_reports_partial_success(self):
         with self.assertRaisesRegex(RuntimeError, 'exit status 1'):
             calculate_bitrates(Process([row(0, duration=1)], code=1), Progress(), 0, 1, False, 'mbps')
@@ -224,9 +236,24 @@ class NativeTests(unittest.TestCase):
         self.assertAlmostEqual(data['mean_bitrate_kbps'], 153.6)
         self.assertAlmostEqual(data['whole_stream_mean_bitrate_kbps'], 768)
 
+    def test_cli_defaults_to_dts_and_keeps_matroska_packets_without_dts(self):
+        path = Path(self.temp.name) / 'bframes.mkv'
+        subprocess.run(['ffmpeg', '-v', 'error', '-i', str(self.path), '-map', '0:v', '-c', 'copy', str(path)], check=True)
+        rows = self.probe('size', path=path)
+        missing = sum(p.get('dts_time', 'N/A') == 'N/A' for p in rows)
+        self.assertGreater(missing, 0)
+        main = str(Path(__file__).resolve().parents[1] / 'main.py')
+        result = subprocess.run([sys.executable, main, '-f', str(path)], cwd=self.temp.name,
+                                env=dict(os.environ, MPLBACKEND='Agg'), capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads((Path(self.temp.name) / '[bframes.mkv]' / 'data.json').read_text())
+        self.assertEqual(data['mode'], 'DTS')
+        self.assertEqual(data['timestamp_fallback_packets'], missing)
+        self.assertEqual(data['total_bytes'], sum(int(p['size']) for p in rows))
+
     def test_cli_audio_selection_gop_and_short_clip(self):
         main = str(Path(__file__).resolve().parents[1] / 'main.py')
-        commands = [[], ['-dts'], ['-s', 'a:0'], ['-gop'], ['-gop', '-dts'], ['-s', 'v:0', '-gop', '-g', 'filled']]
+        commands = [[], ['-dts'], ['-pts'], ['-s', 'a:0'], ['-gop'], ['-gop', '-pts'], ['-s', 'v:0', '-gop', '-g', 'filled']]
         env = dict(os.environ, MPLBACKEND='Agg')
         for options in commands:
             with self.subTest(options=options):
@@ -237,6 +264,7 @@ class NativeTests(unittest.TestCase):
                     directory /= 'gop'
                 data = json.loads((directory / 'data.json').read_text())
                 self.assertTrue(list(directory.glob('*.png')))
+                self.assertEqual(data['mode'], 'PTS' if '-pts' in options else 'DTS')
                 if options == ['-s', 'a:0']:
                     self.assertEqual(data['stream']['type'], 'audio')
                     self.assertIn('mean_bitrate_kbps', data)

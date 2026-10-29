@@ -53,6 +53,7 @@ def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_un
         'partial_timestamp_ranges': partial_ranges,
         'total_packets': len(packets), 'total_bytes': total_bytes,
         'rejected_packets': rejected,
+        'timestamp_fallback_packets': sum(p.fallback for p in packets),
         'rejection_reasons': {'invalid timestamp or size': rejected} if rejected else {},
         'incomplete_reasons': {s: 'partial timeline interval' for s in partial},
         'seconds_without_packets': sum(c == 0 for c in packet_counts),

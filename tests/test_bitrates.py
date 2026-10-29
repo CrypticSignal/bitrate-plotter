@@ -64,7 +64,9 @@ class SecondsTests(unittest.TestCase):
         self.assertEqual(seconds(rows)[0], [1])
         times, rates, data = seconds(rows, include_partial=True)
         self.assertEqual(times, [0, 1, 2])
-        self.assertEqual(rates, [1, 0, 2])
+        # 1 Mbit over 0.2-1.0s and 2 Mbit over 2.0-2.4s.
+        for rate, expected in zip(rates, [1.25, 0, 5]):
+            self.assertAlmostEqual(rate, expected)
         self.assertEqual(data['summary_seconds'], [1])
         self.assertEqual((data['min_bitrate_mbps'], data['max_bitrate_mbps'], data['mean_bitrate_mbps']), (0, 0, 0))
         self.assertAlmostEqual(data['whole_stream_mean_bitrate_mbps'], 3 / 2.2)
@@ -72,8 +74,11 @@ class SecondsTests(unittest.TestCase):
     def test_short_unknown_and_excessive_timelines(self):
         with self.assertRaisesRegex(ValueError, 'include-partial'):
             seconds([row(0, 100)])
-        _, _, data = seconds([row(0, 100)], include_partial=True)
-        self.assertIsNone(data['whole_stream_mean_bitrate_mbps'])
+        with self.assertRaisesRegex(ValueError, 'measurable duration'):
+            seconds([row(0, 100)], include_partial=True)
+        times, rates, data = seconds([row(0, 100), row(1, 100)], include_partial=True)
+        self.assertEqual(times, [0])
+        self.assertAlmostEqual(rates[0], .0008)
         self.assertEqual(seconds([row(0), row(1)])[0], [0])
         with self.assertRaisesRegex(ValueError, 'two million'):
             seconds([row(0), row(3000000)])
@@ -235,7 +240,7 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads((Path(self.temp.name) / '[short.wav]' / 'data.json').read_text())
         self.assertEqual(data['total_bytes'], 19200)
-        self.assertAlmostEqual(data['mean_bitrate_kbps'], 153.6)
+        self.assertAlmostEqual(data['mean_bitrate_kbps'], 768)
         self.assertAlmostEqual(data['whole_stream_mean_bitrate_kbps'], 768)
 
     def test_cli_defaults_to_dts_and_keeps_matroska_packets_without_dts(self):

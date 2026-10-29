@@ -55,7 +55,7 @@ parser.add_argument(
 
 parser.add_argument(
     '--include-partial', action='store_true',
-    help='Include partial start/end buckets in per-second mode; rates still use a one-second divisor.',
+    help='Include partial start/end buckets in per-second mode; their rates are divided by the time they cover.',
 )
 
 args = parser.parse_args()

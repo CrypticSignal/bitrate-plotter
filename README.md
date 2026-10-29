@@ -48,7 +48,7 @@ You can find the output of `python main.py -h` below:
 usage: main.py [-h] -f FILE_PATH [-pts | -dts] [-gop] [-g {filled,unfilled}] [-s STREAM_SPECIFIER] [--include-partial]
 
 options:
-  --include-partial     Include partial edge buckets (still divided by one second).
+  --include-partial     Include partial edge buckets (divided by the time they cover).
   -h, --help            show this help message and exit
   -f, --file-path FILE_PATH
                         Enter the path of the file that you want to analyse.

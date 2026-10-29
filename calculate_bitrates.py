@@ -35,10 +35,14 @@ def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_un
     full = [s for s in range(first, stop) if s >= start - 1e-7 and s + 1 <= end + 1e-7]
     full_set = set(full)
     partial = [s for s in range(first, stop) if s not in full_set]
-    seconds = list(range(first, stop)) if include_partial else full
+    spans = {s: 1 if s in full_set else min(s + 1, end) - max(s, start) for s in range(first, stop)}
+    # A zero-length bucket (e.g. a final packet with no duration) has no measurable rate.
+    seconds = [s for s in range(first, stop) if spans[s] > 1e-7] if include_partial else full
+    if not seconds and include_partial:
+        raise ValueError('No interval with a measurable duration found (packets lack durations).')
     if not seconds:
         raise ValueError('No full one-second intervals found. Use --include-partial for short clips.')
-    bitrates = [sizes.get(s, 0) * 8 * multipliers[output_unit] for s in seconds]
+    bitrates = [sizes.get(s, 0) * 8 / spans[s] * multipliers[output_unit] for s in seconds]
     # Partial buckets are not comparable with full seconds, so they only summarise a clip with no full second.
     summary = [i for i, s in enumerate(seconds) if s in full_set] or list(range(len(seconds)))
     summary_rates = [bitrates[i] for i in summary]
@@ -66,7 +70,7 @@ def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_un
     }
     if partial:
         ranges = ', '.join('{:.3f}-{:.3f}s'.format(a, b) for a, b in partial_ranges)
-        print('{} partial interval(s) {}: {}. Partial rates use a one-second divisor.'.format(len(partial), 'included' if include_partial else 'excluded', ranges))
+        print('{} partial interval(s) {}: {}. Partial rates are divided by the time each interval covers.'.format(len(partial), 'included' if include_partial else 'excluded', ranges))
         if not include_partial:
             data['unused_timestamp_range'] = ranges
     return seconds, bitrates, data

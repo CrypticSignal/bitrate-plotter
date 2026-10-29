@@ -68,6 +68,8 @@ class SecondsTests(unittest.TestCase):
         for rate, expected in zip(rates, [1.25, 0, 5]):
             self.assertAlmostEqual(rate, expected)
         self.assertEqual(data['summary_seconds'], [1])
+        for edge, expected in zip(data['interval_edges'], [.2, 1, 2, 2.4]):
+            self.assertAlmostEqual(edge, expected)
         self.assertEqual((data['min_bitrate_mbps'], data['max_bitrate_mbps'], data['mean_bitrate_mbps']), (0, 0, 0))
         self.assertAlmostEqual(data['whole_stream_mean_bitrate_mbps'], 3 / 2.2)
 

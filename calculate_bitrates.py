@@ -48,6 +48,9 @@ def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_un
     summary_rates = [bitrates[i] for i in summary]
     packet_counts = [counts.get(seconds[i], 0) for i in summary]
     partial_ranges = [(max(s, start), min(s + 1, end)) for s in partial]
+    # Graph step edges: full seconds stay whole, partial buckets are clipped to the timeline.
+    edges = [seconds[0] if seconds[0] in full_set else max(seconds[0], start)]
+    edges += [s + 1 if s in full_set else min(s + 1, end) for s in seconds]
     total_bytes = sum(p.size for p in packets)
     data = {
         'mode': 'DTS' if use_dts else 'PTS',
@@ -57,7 +60,7 @@ def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_un
         'whole_stream_mean_bitrate_' + output_unit: total_bytes * 8 / (end - start) * multipliers[output_unit] if end > start else None,
         'complete_seconds': len(full), 'num_incomplete_seconds': len(partial),
         'included_seconds': seconds, 'include_partial': include_partial,
-        'summary_seconds': [seconds[i] for i in summary],
+        'summary_seconds': [seconds[i] for i in summary], 'interval_edges': edges,
         'partial_timestamp_ranges': partial_ranges,
         'total_packets': len(packets), 'total_bytes': total_bytes,
         'rejected_packets': rejected,

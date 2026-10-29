@@ -63,7 +63,7 @@ def main():
         plt.suptitle('{}\nMin: {:.3f} | Max: {:.3f} | Mean: {:.3f} {}'.format(
             filename, data['min_bitrate_' + key], data['max_bitrate_' + key], data['mean_bitrate_' + key], unit))
         # Fixed buckets are steps; a joined line suggests interpolation between packets.
-        plt.stairs(rates, times + [times[-1] + 1], fill=args.graph_type == 'filled', baseline=0 if args.graph_type == 'filled' else None)
+        plt.stairs(rates, data['interval_edges'], fill=args.graph_type == 'filled', baseline=0 if args.graph_type == 'filled' else None)
         plt.xlabel('Time (s)')
         plt.ylabel('Bitrate ({})'.format(unit))
         graph_name = 'bitrates_graph.png'

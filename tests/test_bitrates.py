@@ -65,6 +65,8 @@ class SecondsTests(unittest.TestCase):
         times, rates, data = seconds(rows, include_partial=True)
         self.assertEqual(times, [0, 1, 2])
         self.assertEqual(rates, [1, 0, 2])
+        self.assertEqual(data['summary_seconds'], [1])
+        self.assertEqual((data['min_bitrate_mbps'], data['max_bitrate_mbps'], data['mean_bitrate_mbps']), (0, 0, 0))
         self.assertAlmostEqual(data['whole_stream_mean_bitrate_mbps'], 3 / 2.2)
 
     def test_short_unknown_and_excessive_timelines(self):

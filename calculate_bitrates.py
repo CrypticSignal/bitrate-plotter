@@ -39,17 +39,21 @@ def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_un
     if not seconds:
         raise ValueError('No full one-second intervals found. Use --include-partial for short clips.')
     bitrates = [sizes.get(s, 0) * 8 * multipliers[output_unit] for s in seconds]
-    packet_counts = [counts.get(s, 0) for s in seconds]
+    # Partial buckets are not comparable with full seconds, so they only summarise a clip with no full second.
+    summary = [i for i, s in enumerate(seconds) if s in full_set] or list(range(len(seconds)))
+    summary_rates = [bitrates[i] for i in summary]
+    packet_counts = [counts.get(seconds[i], 0) for i in summary]
     partial_ranges = [(max(s, start), min(s + 1, end)) for s in partial]
     total_bytes = sum(p.size for p in packets)
     data = {
         'mode': 'DTS' if use_dts else 'PTS',
-        'min_bitrate_' + output_unit: min(bitrates),
-        'mean_bitrate_' + output_unit: sum(bitrates) / len(bitrates),
-        'max_bitrate_' + output_unit: max(bitrates),
+        'min_bitrate_' + output_unit: min(summary_rates),
+        'mean_bitrate_' + output_unit: sum(summary_rates) / len(summary_rates),
+        'max_bitrate_' + output_unit: max(summary_rates),
         'whole_stream_mean_bitrate_' + output_unit: total_bytes * 8 / (end - start) * multipliers[output_unit] if end > start else None,
         'complete_seconds': len(full), 'num_incomplete_seconds': len(partial),
         'included_seconds': seconds, 'include_partial': include_partial,
+        'summary_seconds': [seconds[i] for i in summary],
         'partial_timestamp_ranges': partial_ranges,
         'total_packets': len(packets), 'total_bytes': total_bytes,
         'rejected_packets': rejected,

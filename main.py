@@ -59,7 +59,9 @@ def main():
         graph_name = 'GOP_bitrates_graph.png'
     else:
         unit = 'Mbps' if is_video else 'kbps'
-        plt.suptitle('{}\nMin: {:.3f} | Max: {:.3f} | Chart avg: {:.3f} {}'.format(filename, min(rates), max(rates), sum(rates) / len(rates), unit))
+        key = unit.lower()
+        plt.suptitle('{}\nMin: {:.3f} | Max: {:.3f} | Mean: {:.3f} {}'.format(
+            filename, data['min_bitrate_' + key], data['max_bitrate_' + key], data['mean_bitrate_' + key], unit))
         # Fixed buckets are steps; a joined line suggests interpolation between packets.
         plt.stairs(rates, times + [times[-1] + 1], fill=args.graph_type == 'filled', baseline=0 if args.graph_type == 'filled' else None)
         plt.xlabel('Time (s)')

@@ -38,16 +38,17 @@ Max GOP Duration: 2.5000006666667027
 ```
 
 # Requirements
-- Python 3.7+
+- Python 3.7+ (and Matplotlib 3.4+ for interval plots)
 - FFprobe executable in your PATH.
 - `pip install -r requirements.txt`
 
 # Usage
 You can find the output of `python main.py -h` below:
 ```
-usage: main.py [-h] -f FILE_PATH [-dts] [-gop] [-g {filled,unfilled}] [-s STREAM_SPECIFIER]
+usage: main.py [-h] -f FILE_PATH [-dts] [-gop] [-g {filled,unfilled}] [-s STREAM_SPECIFIER] [--include-partial]
 
 options:
+  --include-partial     Include partial edge buckets (still divided by one second).
   -h, --help            show this help message and exit
   -f, --file-path FILE_PATH
                         Enter the path of the file that you want to analyse.
@@ -66,3 +67,23 @@ options:
                         Note that stream index starts at 0.
                         As an example, to target the 2nd audio stream: --stream-specifier a:1
 ```
+
+## Calculation rules
+
+Per-second rates sum selected-stream packet bytes in fixed `[second, second + 1)` buckets, using `floor(PTS)` or `floor(DTS)`, then multiply by 8 and convert to decimal kbps/Mbps. Negative timestamps are supported. Full intervals inside the packet timeline are included, even at low frame rates or with no packets (zero bitrate); packet density is not a completeness test. The timeline ends at the latest packet timestamp plus duration. Missing video packet durations fall back to average frame rate, then nominal frame rate; otherwise unknown durations count as zero.
+
+Partial edge intervals are excluded by default and their actual ranges are reported. Use `--include-partial` to keep them; their values still divide by one second rather than extrapolating. The chart mean covers displayed intervals. JSON also reports a whole-stream mean using all valid selected packet bits divided by the full packet timeline (unavailable for zero duration). Container duration and bitrate are not used as calculation denominators. `-dts` works for audio and video; the default remains PTS.
+
+GOPs start at keyframes in the selected timestamp order. Each ends at the next keyframe; the final GOP ends at its latest packet end. Packets before the first keyframe are excluded from GOP rates. The overall GOP mean is duration-weighted. These are packet-based groups, not decoded dependency graphs; reordered video can differ between PTS and DTS. Graph steps now cover the actual analyzed interval/GOP boundaries.
+
+Stream specifiers must select exactly one audio/video stream. Units, metadata, and frame-rate fallback follow that stream, including when selecting audio inside a video file. FFprobe failures and missing keyframes/timestamps produce errors instead of partial successful results. Packet bitrates exclude container and transport overhead.
+
+## Tests
+
+With dependencies installed and native FFmpeg/FFprobe available:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Tests cover exact-second endings, negative/nonzero timestamps, low-rate and sparse streams, partial intervals, invalid packets, variable GOP durations, weighted means, and independent native packet sums. CLI checks verify audio/video selection, GOP output, and generated graphs/JSON. No `ffmpeg-python` package is needed; FFprobe is called directly.

@@ -15,7 +15,7 @@ parser.add_argument(
 parser.add_argument(
     "-dts",
     action="store_true",
-    help="Use DTS instead of PTS when calculating bitrates.\nOnly applicable if analysing a video file.",
+    help="Use DTS instead of PTS when calculating bitrates.\nSupported for audio and video streams.",
 )
 
 parser.add_argument(
@@ -41,6 +41,11 @@ parser.add_argument(
     "The defaults for audio and video files are a:0 and V:0, respectively.\n"
     "Note that stream index starts at 0.\n"
     "As an example, to target the 2nd audio stream: --stream-specifier a:1",
+)
+
+parser.add_argument(
+    '--include-partial', action='store_true',
+    help='Include partial start/end buckets in per-second mode; rates still use a one-second divisor.',
 )
 
 args = parser.parse_args()

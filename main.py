@@ -1,191 +1,80 @@
 import json
-import os
 from pathlib import Path
 import subprocess
 
 from args import args
 from calculate_bitrates import calculate_bitrates
 from calculate_gop_bitrates import calculate_gop_bitrates
-
-from utils import FileInfoProvider, VideoInfoProvider, line
+from utils import FileInfoProvider, frame_rate, line
 
 import matplotlib.pyplot as plt
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    BarColumn,
-    TaskProgressColumn,
-)
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
-framerate = None
-is_constant_framerate = None
-is_integer_framerate = None
 
-filename = Path(args.file_path).name
-
-output_dir = Path(f"[{filename}]")
-if args.gop:
-    output_dir = output_dir.joinpath("gop")
-
-os.makedirs(output_dir, exist_ok=True)
-
-entries = f"packet={"dts_time" if args.dts else "pts_time"},size"
-
-if args.gop:
-    entries = f"packet={"dts_time" if args.dts else "pts_time"},size,flags"
-
-line()
-
-file_info = FileInfoProvider(args.file_path)
-is_video = file_info.is_video()
-
-if not args.stream_specifier:
+def main():
+    info = FileInfoProvider(args.file_path)
+    selected = info.get_stream(args.stream_specifier)
+    is_video = selected['codec_type'] == 'video'
+    if args.gop and not is_video:
+        raise ValueError('GOP analysis requires a video stream.')
+    fps = (frame_rate(selected.get('avg_frame_rate')) or frame_rate(selected.get('r_frame_rate'))) if is_video else 0
+    filename = Path(args.file_path).name
+    output_dir = Path('[{}]'.format(filename))
+    if args.gop:
+        output_dir = output_dir / 'gop'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    line()
+    print('File: {}\nSelected stream: #{} {} ({})\nContainer duration: {}'.format(
+        filename, selected['index'], selected['codec_type'], selected.get('codec_name', 'unknown'), info.get_duration()))
     if is_video:
-        print("Video file detected. The first video stream will be analysed.")
-        stream_specifier = "V:0"
-        video_info = VideoInfoProvider(args.file_path)
-    else:
-        stream_specifier = "a:0"
-        print(
-            "It seems like you have specified an audio file. The first audio stream will be analysed."
-        )
-else:
-    stream_specifier = args.stream_specifier
-
-number_of_packets = file_info.get_number_of_packets(stream_specifier)
-
-# The FFprobe command that will output the timestamps and packet sizes in CSV format.
-cmd = [
-    "ffprobe",
-    "-v",
-    "error",
-    "-threads",
-    str(os.cpu_count()),
-    "-select_streams",
-    stream_specifier,
-    "-show_entries",
-    entries,
-    "-of",
-    "csv=print_section=0:nk=1",
-    args.file_path,
-]
-
-line()
-file_duration = file_info.get_duration()
-print(f"Detected the following info about {args.file_path}:")
-line()
-print(f"Duration: {file_duration}s")
-print(f"Number of Packets: {number_of_packets}")
-
-if is_video:
-    is_constant_framerate = video_info.is_constant_framerate()
-
-    if not is_constant_framerate:
-        framerate = video_info.get_average_framerate()
-        print(
-            f"This video has a variable framerate. Average framerate is {framerate} FPS"
-        )
-    else:
-        framerate = video_info.get_framerate_number()
-        is_integer_framerate = video_info.is_integer_framerate()
-        print(f"Framerate: {framerate} FPS")
-
-line()
-
-if args.gop:
-    data_file = Path(output_dir).joinpath("gop_statistics.txt")
-
-    with open(data_file, "w") as f:
-        pass
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-    ) as progress_bar:
-        task_1 = progress_bar.add_task(
-            description="Retrieving packet data...",
-            total=number_of_packets,
-        )
-        task_2 = progress_bar.add_task(
-            description="Retrieving GOPs...",
-            total=number_of_packets,
-        )
-
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-
-        gop_end_times, gop_bitrates, data = calculate_gop_bitrates(
-            process,
-            progress_bar,
-            task_1,
-            task_2,
-            framerate,
-            data_file,
-            args.dts,
-        )
-
+        print('Average frame rate: {} fps (duration fallback only)'.format(fps or 'unknown'))
+    line()
+    timestamp = 'dts_time' if args.dts else 'pts_time'
+    command = ['ffprobe', '-v', 'error', '-select_streams', str(selected['index']),
+               '-show_entries', 'packet={},duration_time,size,flags'.format(timestamp),
+               '-of', 'compact=p=0:nk=0', args.file_path]
+    # Inherit stderr so a probe failure cannot be mistaken for partial success.
+    with subprocess.Popen(command, stdout=subprocess.PIPE) as process:
+        with Progress(SpinnerColumn(), TextColumn('[progress.description]{task.description}'), BarColumn(), TaskProgressColumn()) as progress:
+            task_1 = progress.add_task('Retrieving packets...', total=None)
+            task_2 = progress.add_task('Calculating intervals...', total=None)
+            if args.gop:
+                data_file = output_dir / 'gop_statistics.txt'
+                data_file.write_text('')
+                ends, rates, data = calculate_gop_bitrates(process, progress, task_1, task_2, fps, data_file, args.dts)
+            else:
+                times, rates, data = calculate_bitrates(process, progress, task_1, task_2, args.dts,
+                                                      'mbps' if is_video else 'kbps', framerate=fps,
+                                                      include_partial=args.include_partial)
+    data['stream'] = {'index': selected['index'], 'type': selected['codec_type'], 'codec': selected.get('codec_name')}
     plt.figure(figsize=(15, 8))
-    plt.suptitle(f"{filename} - Full Video")
-    plt.xlabel("GOP end time (s)")
-    plt.ylabel("GOP bitrate (Mbps)")
-
-    if args.graph_type == "filled":
-        plt.fill_between(gop_end_times, gop_bitrates, step="post", alpha=0.3)
-
-    plt.step(gop_end_times, gop_bitrates, where="post", linestyle="-", linewidth=2)
-    plt.scatter(gop_end_times, gop_bitrates, marker=".", color="red", s=20, alpha=0.5)
+    if args.gop:
+        # Each rate belongs between the GOP's start and exclusive end, not after its end.
+        edges = [data['gops'][0]['start_time']] + ends
+        plt.stairs(rates, edges, fill=args.graph_type == 'filled', baseline=0 if args.graph_type == 'filled' else None)
+        plt.suptitle('{} - GOP bitrate'.format(filename))
+        plt.xlabel('Time (s)')
+        plt.ylabel('GOP bitrate (Mbps)')
+        graph_name = 'GOP_bitrates_graph.png'
+    else:
+        unit = 'Mbps' if is_video else 'kbps'
+        plt.suptitle('{}\nMin: {:.3f} | Max: {:.3f} | Chart avg: {:.3f} {}'.format(filename, min(rates), max(rates), sum(rates) / len(rates), unit))
+        # Fixed buckets are steps; a joined line suggests interpolation between packets.
+        plt.stairs(rates, times + [times[-1] + 1], fill=args.graph_type == 'filled', baseline=0 if args.graph_type == 'filled' else None)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Bitrate ({})'.format(unit))
+        graph_name = 'bitrates_graph.png'
     plt.grid(True, alpha=0.3)
     plt.ylim(bottom=0)
-    plt.savefig(Path(output_dir).joinpath("GOP_bitrates_graph.png"))
+    plt.savefig(output_dir / graph_name)
     plt.close()
+    with open(output_dir / 'data.json', 'w') as output:
+        json.dump(data, output, indent=4)
+    print("Done! Check out the '{}' folder.".format(output_dir))
 
-else:
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-    ) as progress_bar:
-        task_1 = progress_bar.add_task(
-            description="Retrieving packet data...",
-            total=number_of_packets,
-        )
-        task_2 = progress_bar.add_task(
-            description="Summing packet sizes...",
-            total=number_of_packets,
-        )
-
-        x_axis_values, bitrate_every_second, data = calculate_bitrates(
-            process,
-            progress_bar,
-            task_1,
-            task_2,
-            args.dts,
-            output_unit="mbps" if is_video else "kbps",
-        )
-
-    average_bitrate = round(sum(bitrate_every_second) / len(bitrate_every_second), 3)
-    min_bitrate = round(min(bitrate_every_second), 3)
-    max_bitrate = round(max(bitrate_every_second), 3)
-
-    data_file = Path(output_dir).joinpath("bitrates.txt")
-
-    print("Creating a graph...")
-    plt.suptitle(
-        f"{filename}\nMin: {min_bitrate} | Max: {max_bitrate} | Avg: {average_bitrate} {"Mbps" if is_video else "Kbps"}"
-    )
-    plt.xlabel("Time (s)")
-    plt.ylabel(f"Bitrate ({"Mbps" if is_video else "Kbps"})")
-    if args.graph_type == "filled":
-        plt.fill_between(x_axis_values, bitrate_every_second)
-    plt.plot(x_axis_values, bitrate_every_second)
-    plt.savefig(Path(output_dir).joinpath("bitrates_graph.png"))
-
-with open(output_dir.joinpath("data.json"), "w") as f:
-    json.dump(data, f, indent=4)
-
-print(f"Done! Check out the '{output_dir}' folder.")
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, RuntimeError, subprocess.CalledProcessError, FileNotFoundError) as error:
+        raise SystemExit(str(error))

@@ -1,219 +1,67 @@
-import io
-import subprocess
-from typing import Tuple, List, Dict, NamedTuple
-
-from utils import process_timestamp_and_size
-
-import numpy as np
+import math
+import warnings
+from utils import collect_packets
 
 
-class Packet(NamedTuple):
-    timestamp: float
-    size: int
+def validate_parameters(min_coverage_seconds, max_gap_seconds):
+    for name, value in [('min_coverage_seconds', min_coverage_seconds), ('max_gap_seconds', max_gap_seconds)]:
+        if value is not None and not 0 < value <= 1:
+            raise ValueError('{} must be between 0 and 1'.format(name))
 
 
-def validate_parameters(
-    min_coverage_seconds: float,
-    max_gap_seconds: float,
-) -> None:
-    if not 0 < min_coverage_seconds <= 1:
-        raise ValueError(
-            f"min_coverage_seconds must be between 0 and 1, got {min_coverage_seconds}"
-        )
-
-    if not 0 < max_gap_seconds <= 1:
-        raise ValueError(
-            f"max_gap_seconds must be between 0 and 1, got {max_gap_seconds}"
-        )
-
-
-def calculate_bitrates(
-    process: subprocess.Popen,
-    progress_bar,
-    task_1,
-    task_2,
-    use_dts: bool,
-    output_unit: str,
-    min_coverage_seconds: float = 0.9,
-    max_gap_seconds: float = 0.1,
-) -> Tuple[List[int], List[float], Dict]:
-    """
-    Calculate bitrates from packet timestamps and sizes.
-    """
-    if not process or not hasattr(process, "stdout"):
-        raise ValueError("Invalid process object provided")
-
-    valid_units = {"kbps", "mbps", "gbps"}
-    if output_unit not in valid_units:
-        raise ValueError(
-            f"Invalid output unit '{output_unit}'. Must be one of: {valid_units}"
-        )
-
+def calculate_bitrates(process, progress_bar, task_1, task_2, use_dts, output_unit,
+                       min_coverage_seconds=None, max_gap_seconds=None, *,
+                       framerate=0, include_partial=False):
+    """Fixed one-second packet rates; complete means inside the packet timeline."""
+    multipliers = {'kbps': 1e-3, 'mbps': 1e-6, 'gbps': 1e-9}
+    if output_unit not in multipliers:
+        raise ValueError('Invalid output unit: {}'.format(output_unit))
     validate_parameters(min_coverage_seconds, max_gap_seconds)
-
-    unit_multipliers = {
-        "kbps": 0.001,
-        "mbps": 0.000001,
-        "gbps": 0.000000001,
-    }
-
-    packets: List[Packet] = []
-    packets_processed = 0
-    rejection_reasons: Dict[str, int] = {}
-    total_bytes = 0
-
-    for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-        if not line.strip():
-            continue
-
-        result = process_timestamp_and_size(line.strip().split(",", 2))
-
-        if not result:
-            rejection_reasons["invalid format"] = (
-                rejection_reasons.get("invalid format", 0) + 1
-            )
-            continue
-
-        timestamp, packet_size = result
-        total_bytes += packet_size
-        packets.append(Packet(timestamp, packet_size))
-        packets_processed += 1
-        progress_bar.update(task_1, completed=packets_processed)
-
-    if not packets:
-        reasons = ", ".join(f"{k}: {v}" for k, v in rejection_reasons.items())
-        raise ValueError(f"No valid packets found. Rejection reasons: {reasons}")
-
-    # Sort timestamps in ascending order
-    packets.sort(key=lambda x: x.timestamp)
-    min_timestamp = packets[0].timestamp
-    max_timestamp = packets[-1].timestamp
-
-    # Group packets by second
-    bytes_per_second = {}
-    packets_per_second = {}
-    timestamp_bounds_per_second = {}
-
-    packets_processed = 0
-
-    for packet in packets:
-        second = int(packet.timestamp)
-        bytes_per_second[second] = bytes_per_second.get(second, 0) + packet.size
-        packets_per_second[second] = packets_per_second.get(second, 0) + 1
-
-        if second not in timestamp_bounds_per_second:
-            timestamp_bounds_per_second[second] = {
-                "min": packet.timestamp,
-                "max": packet.timestamp,
-            }
-        else:
-            timestamp_bounds_per_second[second]["max"] = packet.timestamp
-
-        packets_processed += 1
-        progress_bar.update(task_2, completed=packets_processed)
-
-    duration = int(max_timestamp) - int(min_timestamp)
-    # Round up to the next integer
-    if max_timestamp > int(max_timestamp):
-        duration += 1
-
-    # Identify complete seconds
-    complete_seconds = set()
-    incomplete_reasons = {}
-
-    all_seconds = sorted(bytes_per_second.keys())
-    for i in range(len(all_seconds) - 1):
-        current_second = all_seconds[i]
-        next_second = all_seconds[i + 1]
-
-        curr_bounds = timestamp_bounds_per_second[current_second]
-        next_bounds = timestamp_bounds_per_second[next_second]
-
-        coverage = abs(curr_bounds["max"] - curr_bounds["min"])
-        gap = abs(next_bounds["min"] - curr_bounds["max"])
-
-        if coverage >= min_coverage_seconds and gap < max_gap_seconds:
-            complete_seconds.add(current_second)
-        else:
-            print(f"{next_bounds["min"]} to {next_bounds["max"]}")
-            if coverage < min_coverage_seconds:
-                incomplete_reasons[current_second] = (
-                    f"insufficient coverage: {coverage:.3f}s"
-                )
-            else:
-                incomplete_reasons[current_second] = f"gap too large: {gap:.3f}s"
-
-    if not complete_seconds:
-        reasons = "\n".join(f"Second {s}: {r}" for s, r in incomplete_reasons.items())
-        raise ValueError(
-            "No complete seconds found for bitrate calculation.\n"
-            f"Total seconds: {len(all_seconds)}\n"
-            f"Time range: {min_timestamp:.3f}s to {max_timestamp:.3f}s\n"
-            f"Total packets: {len(packets)}\n"
-            f"Reasons:\n{reasons}"
-        )
-
-    complete_seconds_list = sorted(complete_seconds)
-    x_axis_values = complete_seconds_list
-
-    bitrates = []
-    for second in complete_seconds_list:
-        bytes_this_second = bytes_per_second[second]
-        bitrate = (bytes_this_second * 8) * unit_multipliers[output_unit]
-        bitrates.append(bitrate)
-
-    num_complete_seconds = len(complete_seconds)
-    num_incomplete_seconds = duration - len(complete_seconds)
-
+    if min_coverage_seconds is not None or max_gap_seconds is not None:
+        warnings.warn('Packet coverage/gap thresholds are deprecated and ignored; intervals use timeline bounds.', DeprecationWarning)
+    packets, rejected = collect_packets(process, progress_bar, task_1, use_dts, framerate)
+    start, last = packets[0].time, packets[-1].time
+    end = max(p.time + p.duration for p in packets)
+    first = math.floor(start)
+    stop = max(first + 1, math.floor(last) + 1, math.ceil(end - 1e-7))
+    if stop - first > 2_000_000:
+        raise ValueError('Timestamp range exceeds two million one-second intervals.')
+    sizes, counts = {}, {}
+    for i, packet in enumerate(packets, 1):
+        second = math.floor(packet.time)
+        sizes[second] = sizes.get(second, 0) + packet.size
+        counts[second] = counts.get(second, 0) + 1
+        progress_bar.update(task_2, completed=i)
+    full = [s for s in range(first, stop) if s >= start - 1e-7 and s + 1 <= end + 1e-7]
+    full_set = set(full)
+    partial = [s for s in range(first, stop) if s not in full_set]
+    seconds = list(range(first, stop)) if include_partial else full
+    if not seconds:
+        raise ValueError('No full one-second intervals found. Use --include-partial for short clips.')
+    bitrates = [sizes.get(s, 0) * 8 * multipliers[output_unit] for s in seconds]
+    packet_counts = [counts.get(s, 0) for s in seconds]
+    partial_ranges = [(max(s, start), min(s + 1, end)) for s in partial]
+    total_bytes = sum(p.size for p in packets)
     data = {
-        "mode": "DTS" if use_dts else "PTS",
-        f"min_bitrate_{output_unit}": np.min(bitrates),
-        f"mean_bitrate_{output_unit}": np.mean(bitrates),
-        f"max_bitrate_{output_unit}": np.max(bitrates),
-        "complete_seconds": num_complete_seconds,
-        "num_incomplete_seconds": num_incomplete_seconds,
-        "total_packets": len(packets),
-        "total_bytes": total_bytes,
-        "rejected_packets": sum(rejection_reasons.values()),
-        "rejection_reasons": rejection_reasons,
-        "incomplete_reasons": incomplete_reasons,
-        "packets_per_second": {
-            "min": min(packets_per_second[s] for s in complete_seconds),
-            "max": max(packets_per_second[s] for s in complete_seconds),
-            "avg": sum(packets_per_second[s] for s in complete_seconds)
-            / len(complete_seconds),
-        },
-        "timing": {
-            "first_timestamp": min_timestamp,
-            "last_timestamp": max_timestamp,
-        },
-        "parameters": {
-            "min_coverage_seconds": min_coverage_seconds,
-            "max_gap_seconds": max_gap_seconds,
-        },
+        'mode': 'DTS' if use_dts else 'PTS',
+        'min_bitrate_' + output_unit: min(bitrates),
+        'mean_bitrate_' + output_unit: sum(bitrates) / len(bitrates),
+        'max_bitrate_' + output_unit: max(bitrates),
+        'whole_stream_mean_bitrate_' + output_unit: total_bytes * 8 / (end - start) * multipliers[output_unit] if end > start else None,
+        'complete_seconds': len(full), 'num_incomplete_seconds': len(partial),
+        'included_seconds': seconds, 'include_partial': include_partial,
+        'partial_timestamp_ranges': partial_ranges,
+        'total_packets': len(packets), 'total_bytes': total_bytes,
+        'rejected_packets': rejected,
+        'rejection_reasons': {'invalid timestamp or size': rejected} if rejected else {},
+        'incomplete_reasons': {s: 'partial timeline interval' for s in partial},
+        'seconds_without_packets': sum(c == 0 for c in packet_counts),
+        'packets_per_second': {'min': min(packet_counts), 'max': max(packet_counts), 'avg': sum(packet_counts) / len(packet_counts)},
+        'timing': {'first_timestamp': start, 'last_timestamp': last, 'end_timestamp': end, 'duration': end - start},
     }
-
-    if num_incomplete_seconds > 0:
-        print(
-            f"Found {num_incomplete_seconds} incomplete seconds that will be excluded from bitrates calculations. "
-            f"Using {num_complete_seconds} complete seconds for bitrate calculations."
-        )
-
-        packets_excluded: List[Packet] = []
-
-        for packet in packets:
-            if packet.timestamp >= len(complete_seconds):
-                packets_excluded.append(packet)
-
-        unused_timestamp_range_min = packets_excluded[0].timestamp
-        unused_timestamp_range_max = packets_excluded[-1].timestamp
-
-        print(
-            f"Unused {'DTS' if use_dts else 'PTS'} range: {unused_timestamp_range_min} to {unused_timestamp_range_max}"
-        )
-
-        data["unused_timestamp_range"] = (
-            f"{unused_timestamp_range_min} to {unused_timestamp_range_max}"
-        )
-
-    return x_axis_values, bitrates, data
+    if partial:
+        ranges = ', '.join('{:.3f}-{:.3f}s'.format(a, b) for a, b in partial_ranges)
+        print('{} partial interval(s) {}: {}. Partial rates use a one-second divisor.'.format(len(partial), 'included' if include_partial else 'excluded', ranges))
+        if not include_partial:
+            data['unused_timestamp_range'] = ranges
+    return seconds, bitrates, data

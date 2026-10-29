@@ -1,9 +1,7 @@
 from dataclasses import dataclass
-import json
-import io
-from typing import List, Tuple, TextIO, NamedTuple
+from typing import List, Tuple, NamedTuple
 
-from utils import append_to_file
+from utils import append_to_file, collect_packets, frame_rate
 
 import numpy as np
 
@@ -13,6 +11,7 @@ class Packet:
     time: float  # PTS or DTS time
     size: float  # Size in megabits
     flags: str  # Packet flag (e.g. 'K__')
+    duration: float = 0.0
 
     @property
     def is_keyframe(self) -> bool:
@@ -28,13 +27,14 @@ class GOPStats(NamedTuple):
 
 
 class GOP:
-    def __init__(self, start_time: float, packets: List[Packet]):
+    def __init__(self, start_time: float, packets: List[Packet], boundary_end=None):
         self.start_time = start_time
         self.packets = packets
+        self.boundary_end = boundary_end
 
     @property
     def end_time(self) -> float:
-        return self.packets[-1].time
+        return self.boundary_end if self.boundary_end is not None else max(p.time + p.duration for p in self.packets)
 
     @property
     def size(self) -> float:
@@ -50,7 +50,9 @@ class GOP:
 
     def calculate_stats(self, framerate: float) -> GOPStats:
         """Calculate GOP statistics"""
-        duration = self.end_time - self.start_time + (1 / framerate)
+        fps = frame_rate(framerate)
+        end = self.boundary_end if self.boundary_end is not None else max(p.time + (p.duration if p.duration > 0 else (1 / fps if fps else 0)) for p in self.packets)
+        duration = end - self.start_time
         if duration <= 0:
             raise ValueError(f"Invalid GOP duration: {duration:.3f}s")
         bitrate = self.size / duration
@@ -68,6 +70,8 @@ class VideoStats:
         self.packets = packets
         self.gops = gops
         self.framerate = framerate
+        for i, gop in enumerate(gops[:-1]):
+            gop.boundary_end = gops[i + 1].start_time
         self.gop_stats = [gop.calculate_stats(framerate) for gop in gops]
 
     @property
@@ -114,51 +118,25 @@ class VideoStats:
             "bitrate": (
                 np.min([s.bitrate for s in self.gop_stats]),
                 np.max([s.bitrate for s in self.gop_stats]),
-                np.mean([s.bitrate for s in self.gop_stats]),
+                sum(s.size for s in self.gop_stats) / sum(s.duration for s in self.gop_stats),
             ),
             "avg_packets": np.mean([s.packet_count for s in self.gop_stats]),
         }
 
 
 def calculate_gop_bitrates(
-    process: TextIO,
+    process,
     progress_bar,
     task_1,
     task_2,
     framerate,
     data_file: str,
     use_dts: bool,
-) -> Tuple[List[float], List[float]]:
-    def collect_packets() -> List[Packet]:
-        packets = []
-        packets_processed = 0
-
-        for line in io.TextIOWrapper(process.stdout, encoding="utf-8"):
-            try:
-                parts = line.strip().split(",")
-                if len(parts) != 3:
-                    print(f"Warning: Invalid line format: {line}")
-                    continue
-
-                time = float(parts[0])
-                size = (int(parts[1]) * 8) / 1_000_000  # Convert to megabits
-                flags = parts[2]
-
-                packets.append(Packet(time, size, flags))
-
-            except (ValueError, IndexError) as e:
-                append_to_file(
-                    data_file,
-                    f"Warning: Error processing packet {packets_processed}: {str(e)}",
-                )
-
-            packets_processed += 1
-            progress_bar.update(task_1, completed=packets_processed)
-
-        if not packets:
-            raise RuntimeError("No valid packets found in input")
-
-        return sorted(packets, key=lambda f: f.time)
+) -> Tuple[List[float], List[float], dict]:
+    def read_packets():
+        records, rejected = collect_packets(process, progress_bar, task_1, use_dts, framerate)
+        packets = [Packet(p.time, p.size * 8 / 1_000_000, 'K' if p.keyframe else '', p.duration) for p in records]
+        return packets, rejected
 
     def process_gops(packets: List[Packet]) -> List[GOP]:
         """Process packets into GOPs."""
@@ -202,12 +180,11 @@ def calculate_gop_bitrates(
 
     try:
         # Collect and process packets
-        packets = collect_packets()
+        packets, rejected = read_packets()
         gops = process_gops(packets)
 
         if not gops:
-            print("\nNo GOPs found in video!")
-            return [], []
+            raise ValueError("No GOPs found: the selected stream has no keyframe packets.")
 
         # Calculate statistics
         video_stats = VideoStats(packets, gops, framerate)
@@ -223,11 +200,16 @@ def calculate_gop_bitrates(
         append_to_file(data_file, "\n\nPacket Statistics:")
         append_to_file(
             data_file,
-            f"\Packet size range: {min_packet_size:.6f} to {max_packet_size:.6f} Megabits",
+            f"\nPacket size range: {min_packet_size:.6f} to {max_packet_size:.6f} Megabits",
         )
 
         data = {
             "mode": timing_type,
+            "rejected_packets": rejected,
+            "gops": [dict(start_time=gop.start_time, end_time=gop.start_time + stats.duration,
+                          duration=stats.duration, size_megabits=stats.size,
+                          bitrate_mbps=stats.bitrate, packet_count=stats.packet_count)
+                     for gop, stats in zip(gops, video_stats.gop_stats)],
             f"{timing_type}_range": f"{video_stats.first_time:.3f}s to {video_stats.final_time:.3f}s",
             "gop_count": f"{len(gops)}",
             "mean_packets_per_gop": f"{gop_stats_range['avg_packets']:.1f}",
@@ -259,13 +241,13 @@ def calculate_gop_bitrates(
 
             data[f"average_{timing_type}_interval"] = f"{mean_interval:.6f}s"
 
-        if len(time_intervals) > 0:
+        if len(time_intervals) > 0 and frame_rate(framerate) > 0:
             mean_interval = np.mean(time_intervals)
-            if abs(mean_interval == (1 / framerate)) < 0.000_000_001:
+            if abs(mean_interval - (1 / frame_rate(framerate))) < 0.000_000_001:
                 print(f"✓ Average {timing_type} interval matches expected frame rate")
             else:
                 print(
-                    f"! Average {timing_type} interval ({mean_interval}s) differs from expected ({1/framerate}s)"
+                    f"! Average {timing_type} interval ({mean_interval}s) differs from expected ({1/frame_rate(framerate)}s)"
                 )
 
             if abs(max_interval - min_interval) < 0.001:
@@ -283,7 +265,7 @@ def calculate_gop_bitrates(
                 f"[Info] GOP durations are inconsistent:\nMin: {min_duration}\nMean: {mean_duration}\nMax: {max_duration}"
             )
 
-        gop_end_times = [gop.end_time for gop in gops]
+        gop_end_times = [gop.start_time + stats.duration for gop, stats in zip(gops, video_stats.gop_stats)]
         gop_bitrates = [stats.bitrate for stats in video_stats.gop_stats]
 
         return gop_end_times, gop_bitrates, data
